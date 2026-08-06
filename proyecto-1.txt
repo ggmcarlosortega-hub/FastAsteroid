@@ -1,4 +1,4 @@
-Planificación base sobre el proyecto de domicilios en Carepa (falta crear el nombre)
+Planificación base sobre el proyecto de domicilios en Carepa (falta crear el nombre) posible (fast - asteroid || FASTEROID)
 
 Deberá de contener un dashboard informativo tipo panel administrativo donde se tenga el resumen de los domicilios realizados mensualmente, kilómetros recorrido en el mes basándose en la información proporcionada por cada usuario visitado, cantidad de veces que fue tanqueado el vehículo, cliente que mayor veces se visito. En la parte inferior de estos datos se podrá desplegar con mayor detenimiento cada una de estas operaciones:
 -despliegue de domicilios hechos mensualmente: consistirá en poder ver la cantidad de domicilios entregados ya sea diario, semanal o mensual según sea la necesidad con detalles de cuantos fueron cancelados en efectivo y transferencia.
