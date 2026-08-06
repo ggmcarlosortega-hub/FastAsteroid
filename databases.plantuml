@@ -1,0 +1,76 @@
+@startuml
+!theme plain
+hide circle
+skinparam linetype ortho
+
+' --- Declaración de ENUMS (Reglas estrictas) ---
+enum MetodoPago {
+  Efectivo
+  Transferencia
+}
+
+enum EstadoDomicilio {
+  En_curso
+  Entregado
+  Cancelado
+}
+
+enum EspacioBaul {
+  1
+  2
+  3
+}
+
+enum TipoMantenimiento {
+  Tanqueo
+  Taller
+  Compra_Adicional
+}
+
+' --- Entidades ---
+entity "Cliente" as cliente {
+  * telefono : VARCHAR <<PK>>
+  --
+  fecha_primer_registro : DATETIME
+}
+
+entity "Ubicacion" as ubicacion {
+  * id_ubicacion : UUID <<PK>>
+  --
+  telefono_cliente : VARCHAR <<FK>>
+  latitud : DECIMAL
+  longitud : DECIMAL
+  alias_direccion : VARCHAR
+}
+
+entity "Domicilio" as domicilio {
+  * id_domicilio : UUID <<PK>>
+  --
+  telefono_cliente : VARCHAR <<FK>>
+  id_ubicacion : UUID <<FK>>
+  fecha_hora_creacion : DATETIME
+  fecha_hora_entrega : DATETIME <<NULLABLE>>
+  valor_recaudado : DECIMAL
+  metodo_pago : MetodoPago
+  estado : EstadoDomicilio
+  distancia_km : DECIMAL
+  espacio_baul : EspacioBaul
+  foto_productos_url : VARCHAR
+}
+
+entity "Registro_Mantenimiento" as mantenimiento {
+  * id_registro : UUID <<PK>>
+  --
+  fecha_hora : DATETIME
+  kilometraje_actual : INT
+  tipo : TipoMantenimiento
+  galones_ingresados : DECIMAL <<NULLABLE>>
+  costo_total : DECIMAL <<NULLABLE>>
+  descripcion_compras_y_taller : TEXT
+}
+
+' --- Relaciones ---
+cliente ||--o{ ubicacion : "posee"
+cliente ||--o{ domicilio : "solicita"
+ubicacion ||--o{ domicilio : "destino de"
+@enduml

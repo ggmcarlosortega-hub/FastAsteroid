@@ -1,0 +1,18 @@
+Planificación base sobre el proyecto de domicilios en Carepa (falta crear el nombre)
+
+Deberá de contener un dashboard informativo tipo panel administrativo donde se tenga el resumen de los domicilios realizados mensualmente, kilómetros recorrido en el mes basándose en la información proporcionada por cada usuario visitado, cantidad de veces que fue tanqueado el vehículo, cliente que mayor veces se visito. En la parte inferior de estos datos se podrá desplegar con mayor detenimiento cada una de estas operaciones:
+-despliegue de domicilios hechos mensualmente: consistirá en poder ver la cantidad de domicilios entregados ya sea diario, semanal o mensual según sea la necesidad con detalles de cuantos fueron cancelados en efectivo y transferencia.
+
+-despliegue de kilómetros recorridos : será el detalle de los kilómetros recorridos con el cliente con mayor distancia teniendo en cuenta la cantidad de veces que fue visitado y entregado domicilios con éxito.
+
+-Despliegue de mantenimiento del vehículo: En este se dará un detalle de las veces que fue tanqueada la moto y se tomara la cantidad de kilómetros recorrido con la gasolina proporcionada para entender su flujo y cantidad posible a recorrer. Se tendrá en cuenta las veces llevada al taller y las compras adicionales que se tuvieron que realizar para su uso adecuado nuevamente.
+
+-Despliegue de clientes: Se hará un listado del cliente con mayor interacción en el negocio para poder visualizar la cantidad de pedidos realizados semanal y mensualmente.
+
+Para el registro de cada usuario se busca que el medio de reconocimiento sea por medio del numero de teléfono y se pueda asociar una ubicación una vez se haya finalizado el recorrido usando la ubicación en tiempo real para ser lo mas acertado posible. Si el cliente ya ha sido registrado en alguna ocasión se le pueda anexar mas ubicaciones acorde a lo que se necesite y así reducir tiempos en llevar el producto. (aun no se si sea posible usar una api de Google maps para que lo redireccione según sea la ubicación tomada anteriormente)
+
+Si existe una comanda real esta sea escaneada desde el entorno del celular y poder extraer los datos desde la vista donde cada uno sea exacto con base a lo proporcionado. Te redireccione automáticamente a las llamadas y lleve el numero para solo darle clic a llamar y usarla. La cámara se podría usar en tiempo real o como medio de almacenamiento del dispositivo para así traer esos datos.
+
+Para cada domicilio se asignara una ubicación en especifica para asi a la hora de entregar el producto no exista ningún tipo de percance. El baul de la moto cuenta con tres espacios cada uno de forma horizontal, si es posible la foto de los productos a entregar que se podrían tomar desde la información recolectada en la comanda anteriormente usada para obtener el numero de teléfono. Una vez se haya hecho lo anterior se tenga la opción de seleccionar el botón de entregado y en ese momento capturar la ubicación en tiempo real de la persona donde se encuentra ubicada para futuros domicilios a realizar.
+
+
