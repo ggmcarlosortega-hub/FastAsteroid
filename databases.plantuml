@@ -15,19 +15,26 @@ enum EstadoDomicilio {
   Cancelado
 }
 
-enum EspacioBaul {
-  1
-  2
-  3
-}
-
 enum TipoMantenimiento {
   Tanqueo
   Taller
   Compra_Adicional
 }
 
+enum RolUsuario {
+  Admin
+  Domiciliario
+}
+
 ' --- Entidades ---
+entity "Usuario" as usuario {
+  * telefono : VARCHAR <<PK>>
+  --
+  nombre : VARCHAR
+  password_hash : VARCHAR
+  rol : RolUsuario
+}
+
 entity "Cliente" as cliente {
   * telefono : VARCHAR <<PK>>
   --
@@ -47,6 +54,7 @@ entity "Domicilio" as domicilio {
   * id_domicilio : UUID <<PK>>
   --
   telefono_cliente : VARCHAR <<FK>>
+  telefono_domiciliario : VARCHAR <<FK>>
   id_ubicacion : UUID <<FK>>
   fecha_hora_creacion : DATETIME
   fecha_hora_entrega : DATETIME <<NULLABLE>>
@@ -54,7 +62,7 @@ entity "Domicilio" as domicilio {
   metodo_pago : MetodoPago
   estado : EstadoDomicilio
   distancia_km : DECIMAL
-  espacio_baul : EspacioBaul
+  espacio_baul : INT
   foto_productos_url : VARCHAR
 }
 
@@ -73,4 +81,10 @@ entity "Registro_Mantenimiento" as mantenimiento {
 cliente ||--o{ ubicacion : "posee"
 cliente ||--o{ domicilio : "solicita"
 ubicacion ||--o{ domicilio : "destino de"
+usuario ||--o{ domicilio : "registra/entrega"
+
+note right of domicilio
+  espacio_baul: valor entre 1 y 3
+  (CHECK espacio_baul BETWEEN 1 AND 3)
+end note
 @enduml
