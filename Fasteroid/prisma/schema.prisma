@@ -1,0 +1,99 @@
+// Modelo de datos de Fasteroid.
+// Fuente de verdad: ../../databases.plantuml y ../../proyecto-unificado.md (secciones 6 y 24).
+//
+// SQLite no soporta `enum` en Prisma, así que los campos que en el plantuml son ENUM
+// (rol, metodo_pago, estado, tipo) se modelan como String con los valores válidos
+// documentados aquí, reforzados con CHECK constraints en la migración SQL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// rol: "Admin" | "Domiciliario"
+model Usuario {
+  telefono      String @id
+  nombre        String
+  password_hash String
+  rol           String
+
+  domicilios Domicilio[] @relation("DomiciliarioDeDomicilio")
+
+  @@map("usuario")
+}
+
+model Cliente {
+  telefono               String   @id
+  nombre                 String
+  fecha_primer_registro  DateTime @default(now())
+
+  ubicaciones Ubicacion[]
+  domicilios  Domicilio[]
+
+  @@map("cliente")
+}
+
+model Ubicacion {
+  id_ubicacion     String @id @default(uuid())
+  telefono_cliente String
+  latitud          Float
+  longitud         Float
+  alias_direccion  String
+
+  cliente    Cliente     @relation(fields: [telefono_cliente], references: [telefono], onDelete: Cascade)
+  domicilios Domicilio[]
+
+  @@map("ubicacion")
+}
+
+/// metodo_pago: "Efectivo" | "Transferencia"
+/// estado: "En_curso" | "Entregado" | "Cancelado"
+model Domicilio {
+  id_domicilio           String    @id @default(uuid())
+  telefono_cliente       String
+  telefono_domiciliario  String
+  id_ubicacion           String
+  // No está en el plantuml, pero las secciones 3 y 6 del documento unificado piden
+  // registrar los productos solicitados al crear el domicilio.
+  productos               String
+  // "Valor del pedido" (sección 6): precio fijado al crear el domicilio,
+  // independiente de si termina entregado o cancelado — es la base para medir
+  // ganancias (entregado) y pérdidas (cancelado) en el panel de Admin.
+  precio                  Float
+  fecha_hora_creacion    DateTime  @default(now())
+  fecha_hora_entrega     DateTime?
+  // Nullable: según el flujo de las secciones 20-21, el método de pago y el valor
+  // realmente cobrado se registran al marcar el domicilio como entregado (puede
+  // diferir de `precio` si hubo algún ajuste al momento de la entrega).
+  valor_recaudado        Float?
+  metodo_pago            String?
+  estado                 String    @default("En_curso")
+  distancia_km           Float?
+  espacio_baul           Int
+  foto_productos_url     String?
+  // No está en el plantuml, pero la sección 6 del documento unificado exige motivo
+  // obligatorio al cancelar un domicilio.
+  motivo_cancelacion     String?
+
+  cliente      Cliente   @relation(fields: [telefono_cliente], references: [telefono])
+  domiciliario Usuario   @relation("DomiciliarioDeDomicilio", fields: [telefono_domiciliario], references: [telefono])
+  ubicacion    Ubicacion @relation(fields: [id_ubicacion], references: [id_ubicacion])
+
+  @@map("domicilio")
+}
+
+/// tipo: "Tanqueo" | "Taller" | "Compra_Adicional"
+model RegistroMantenimiento {
+  id_registro                   String   @id @default(uuid())
+  fecha_hora                    DateTime @default(now())
+  kilometraje_actual             Int
+  tipo                           String
+  galones_ingresados             Float?
+  costo_total                    Float?
+  descripcion_compras_y_taller   String?
+
+  @@map("registro_mantenimiento")
+}

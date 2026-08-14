@@ -107,21 +107,27 @@ versión vigente y ya incorporan las decisiones tomadas:
 
 ## 4. Roles de usuario y permisos
 
-Cuentas separadas desde el MVP. La asignación de domicilios **no** es un flujo en tiempo real dentro
-del panel — es un proceso físico e independiente: el domiciliario recibe pedidos y decide cuántos lleva
-en cada salida (limitado por los 3 espacios del baúl), y es él quien los registra en la app. El
-administrador define la cantidad/meta de domicilios para el domiciliario, pero no asigna uno por uno
-desde la pantalla.
+Cuentas separadas desde el MVP.
+
+**Decisión actualizada (reemplaza la versión original de esta sección):** el planteamiento inicial
+decía que la asignación de domicilios no era un flujo dentro del panel y que el administrador solo
+definía la meta/cantidad, sin asignar uno por uno. Esto cambió: **el administrador también puede crear
+un domicilio directamente desde el panel y asignarlo a un domiciliario específico**, además de que el
+domiciliario puede seguir registrando los suyos propios desde el celular. Las reglas de negocio (máximo
+3 domicilios simultáneos, uno por espacio del baúl) aplican igual sin importar quién lo crea, evaluadas
+sobre el domiciliario al que queda asignado.
 
 | Rol | Dispositivo | Qué hace |
 |---|---|---|
 | Domiciliario | Celular | Registra sus propios domicilios (cliente, ubicación, productos) según la carga que lleva en el vehículo, marca entregas/cancelaciones, registra mantenimiento, escanea comandas (Fase 2) |
-| Administrador/Dueño | Web (dashboard) | Define la cantidad/meta de domicilios para el domiciliario, consulta métricas e histórico de todos, gestiona clientes |
+| Administrador/Dueño | Web (dashboard) | Crea y asigna domicilios a un domiciliario, consulta métricas e histórico de todos, gestiona clientes |
 
-Un domiciliario solo puede ver y operar los domicilios que él mismo registró; el administrador ve el
-total de todos los domiciliarios. Esto se aplica desde el MVP, no se difiere — el modelo de datos
-incluye desde ya quién entregó cada domicilio (ver sección 24), pensando en que a futuro podría haber
-más de un domiciliario/moto.
+Un domiciliario solo puede ver y **operar** (marcar entregado/cancelado) los domicilios asignados a él;
+el administrador ve el total de todos los domiciliarios y puede crear domicilios para cualquiera de
+ellos, pero no marca entregas/cancelaciones desde el panel — eso sigue siendo del domiciliario, porque
+depende del tracking GPS que corre en su celular durante la entrega real. Esto se aplica desde el MVP,
+no se difiere — el modelo de datos incluye desde ya quién entregó cada domicilio (ver sección 24),
+pensando en que a futuro podría haber más de un domiciliario/moto.
 
 ## 5. Dashboard administrativo
 
@@ -144,6 +150,11 @@ Además:
 - Desglose de km recorridos por cliente, ordenado por distancia y frecuencia.
 - Desglose de mantenimiento: tanqueos, kilómetros por tanque, visitas a taller, compras adicionales.
 - Ranking de clientes por número de pedidos (semanal/mensual).
+- **Ganancias y pérdidas** (confirmado): comparación gráfica, por período (día/semana/mes), entre lo
+  ganado (suma de `precio` de domicilios entregados) y lo perdido (suma de `precio` de domicilios
+  cancelados) — posible porque `precio` se fija desde la creación del domicilio, sin importar el
+  desenlace (ver sección 24). Se adelantó su construcción a `/admin/domicilios` antes de que el resto
+  del dashboard (Bloque 4 del backlog) esté listo.
 
 ## 6. Módulo de domicilios
 
@@ -154,10 +165,16 @@ coordenadas GPS, productos solicitados, valor del pedido, método de pago, estad
 recorridos, domiciliario que lo registra y entrega, fecha y hora de inicio/entrega, espacio de baúl
 asignado, observaciones.
 
-**Flujo de creación (confirmado):** lo crea el propio domiciliario según la carga que lleva —
-cliente, ubicación, productos, espacio de baúl (máximo 3 domicilios simultáneos por carga, uno por
-espacio). Al crear el domicilio empieza el tracking de ubicación en segundo plano hasta que se marque
-como entregado o cancelado (ver sección 8).
+**Flujo de creación (confirmado):** lo crea el propio domiciliario según la carga que lleva, o el
+administrador asignándolo a un domiciliario (ver sección 4) — cliente, ubicación, productos, **precio**
+(valor del pedido, fijado desde este momento), espacio de baúl (máximo 3 domicilios simultáneos por
+carga, uno por espacio). Al crear el domicilio empieza el tracking de ubicación en segundo plano hasta
+que se marque como entregado o cancelado (ver sección 8).
+
+**Captura de ubicación al entregar (confirmado):** al presionar "Entregado", además de registrar el
+pago, el sistema toma la ubicación GPS actual del domiciliario. Si esa ubicación no coincide con
+ninguna ya guardada del cliente, se guarda como una ubicación nueva; si coincide con una existente, no
+se duplica — solo se confirma la entrega (ver sección 22).
 
 **Estados del domicilio (modelo vigente):** `En curso`, `Entregado`, `Cancelado` (con motivo). El
 planteamiento original contemplaba estados más granulares (`Pendiente`, `En preparación`, `En camino`,
@@ -263,10 +280,9 @@ información.
 **Información almacenada:** teléfono (identificador), fecha de registro, cantidad total de pedidos,
 pedidos semanales/mensuales, ubicaciones asociadas, observaciones.
 
-**Pendiente de decidir — campo `nombre`:** el planteamiento original pedía guardar el nombre del
-cliente además del teléfono; el modelo de datos vigente (sección 24) todavía no lo incluye. Se decide
-al construir el CRUD de clientes (Bloque 1 del backlog, sección 32) si hace falta mostrar un nombre en
-vez de solo el número.
+**Decisión confirmada — campo `nombre`:** `Cliente` sí incluye `nombre` (obligatorio), además del
+teléfono como identificador. Se agregó al modelo de datos (sección 24) al construir el CRUD de clientes
+(Bloque 1 del backlog, sección 32).
 
 ## 13. Múltiples ubicaciones por cliente
 
@@ -497,11 +513,26 @@ El modelo vigente está en [`databases.plantuml`](databases.plantuml), con las e
 4. **`foto_productos_url` en `Domicilio` como una sola foto** (sección 17), sin tabla `Foto_Producto`
    aparte.
 5. Relación `usuario ||--o{ domicilio : "registra/entrega"`.
+6. **Campo `nombre` en `Cliente`** (sección 12), obligatorio, junto a `telefono` y
+   `fecha_primer_registro`.
+7. **Campo `motivo_cancelacion` en `Domicilio`** (nullable), no estaba en el planteamiento original
+   pero la sección 6 exige motivo obligatorio al cancelar — se valida en la capa de servicio (y con un
+   `CHECK` en la migración) que sea obligatorio cuando `estado = Cancelado`.
+8. **Campo `productos` en `Domicilio`** (obligatorio, texto libre), no estaba en el planteamiento
+   original pero las secciones 3 y 6 piden registrar los productos solicitados al crear el domicilio.
+9. **`valor_recaudado` y `metodo_pago` en `Domicilio` son nullable**: según el flujo de las secciones
+   20-21, se registran al marcar el domicilio como entregado, no al crearlo.
+10. **Índice único parcial** `(telefono_domiciliario, espacio_baul)` sobre domicilios con
+    `estado = En_curso`: garantiza a nivel de base de datos la regla de la sección 16 (máximo 3
+    domicilios simultáneos por domiciliario, uno por espacio de baúl).
+11. **Campo `precio` en `Domicilio`** (obligatorio): es el "valor del pedido" que ya mencionaba la
+    sección 6 del planteamiento original, pero que no había quedado modelado. Se fija al **crear** el
+    domicilio (a diferencia de `valor_recaudado`, que se registra al entregar) precisamente para que
+    exista un valor conocido de antemano sin importar si el domicilio termina entregado o cancelado —
+    es la base de la gráfica de ganancias/pérdidas del panel de Admin (sección 5).
 
 Pendiente de modelar:
 
-6. **Campo `nombre` en `Cliente`** (sección 12) — hoy la entidad solo tiene `telefono` y
-   `fecha_primer_registro`.
 7. **Campos adicionales de mantenimiento/tanqueo** (sección 11): tipo de combustible, estación de
    servicio, repuestos utilizados.
 8. **Entidad `Comanda`** (Fase 2, sección 18), con los campos extraídos por OCR y relación 1:1 con
@@ -534,13 +565,13 @@ Todas las preguntas abiertas del planteamiento original quedaron resueltas:
 | Foto de productos | Una foto al momento de cargar el pedido al baúl, no una por compartimento |
 | API de rutas de Google Maps | No se usa para calcular distancia; se evalúa un botón de deep link sin API en Fase 3 |
 | Roles | Cuentas separadas desde el MVP |
-| Asignación de domicilios | El domiciliario decide y registra cuántos lleva por carga (máx. 3); el admin solo define la meta/cantidad, no asigna uno por uno |
+| Asignación de domicilios | **Actualizado (ver sección 4):** el domiciliario sigue registrando los suyos según la carga que lleva, y además el administrador puede crear un domicilio y asignarlo a un domiciliario específico desde el panel |
+| ¿Se necesita el campo `nombre` en `Cliente`? | Sí, obligatorio — agregado al modelo en el Bloque 1 del backlog |
 
 **Preguntas nuevas, todavía abiertas** (no bloquean el arranque del MVP):
 
 | Pregunta | Estado |
 |---|---|
-| ¿Se necesita el campo `nombre` en `Cliente`? | Pendiente — se decide en Bloque 1 del backlog (sección 32) |
 | ¿Hacen falta estados intermedios del domicilio (`Pendiente`, `En preparación`, `En camino`)? | Pendiente — el flujo actual no parece necesitarlos, se revisa con uso real |
 | ¿Se necesitan campos extra de mantenimiento (tipo de combustible, estación, repuestos)? | Pendiente — se agregan si el negocio los pide |
 

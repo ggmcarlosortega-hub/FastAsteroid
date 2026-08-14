@@ -38,6 +38,7 @@ entity "Usuario" as usuario {
 entity "Cliente" as cliente {
   * telefono : VARCHAR <<PK>>
   --
+  nombre : VARCHAR
   fecha_primer_registro : DATETIME
 }
 
@@ -56,14 +57,17 @@ entity "Domicilio" as domicilio {
   telefono_cliente : VARCHAR <<FK>>
   telefono_domiciliario : VARCHAR <<FK>>
   id_ubicacion : UUID <<FK>>
+  productos : TEXT
+  precio : DECIMAL
   fecha_hora_creacion : DATETIME
   fecha_hora_entrega : DATETIME <<NULLABLE>>
-  valor_recaudado : DECIMAL
-  metodo_pago : MetodoPago
+  valor_recaudado : DECIMAL <<NULLABLE>>
+  metodo_pago : MetodoPago <<NULLABLE>>
   estado : EstadoDomicilio
-  distancia_km : DECIMAL
+  distancia_km : DECIMAL <<NULLABLE>>
   espacio_baul : INT
-  foto_productos_url : VARCHAR
+  foto_productos_url : VARCHAR <<NULLABLE>>
+  motivo_cancelacion : VARCHAR <<NULLABLE>>
 }
 
 entity "Registro_Mantenimiento" as mantenimiento {
@@ -86,5 +90,11 @@ usuario ||--o{ domicilio : "registra/entrega"
 note right of domicilio
   espacio_baul: valor entre 1 y 3
   (CHECK espacio_baul BETWEEN 1 AND 3)
+  Máximo 3 domicilios "En_curso" por domiciliario,
+  uno por espacio_baul
+  (UNIQUE INDEX telefono_domiciliario + espacio_baul
+   WHERE estado = 'En_curso')
+  motivo_cancelacion obligatorio si estado = 'Cancelado'
+  (CHECK)
 end note
 @enduml
