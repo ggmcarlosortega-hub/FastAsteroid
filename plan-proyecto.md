@@ -267,3 +267,4 @@ tareas están en el orden en que tiene sentido construirlas.
 Con esto, el Bloque 2 es el que primero entrega valor real de negocio (ya se puede operar y medir);
 los bloques 3 y 4 dependen de que existan datos de domicilios y mantenimiento para tener algo que
 mostrar.
+</content>
