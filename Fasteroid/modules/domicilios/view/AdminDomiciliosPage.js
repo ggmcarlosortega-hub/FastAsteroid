@@ -139,7 +139,7 @@ export default function AdminDomiciliosPage() {
             <Link
               key={domicilio.id_domicilio}
               href={`/admin/domicilios/${domicilio.id_domicilio}`}
-              className="flex items-center justify-between px-5 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              className="flex items-center justify-between px-5 py-3 hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
             >
               <div>
                 <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">

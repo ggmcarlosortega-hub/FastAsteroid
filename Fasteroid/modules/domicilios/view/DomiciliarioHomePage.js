@@ -16,6 +16,7 @@ import {
   Inbox,
   ScanLine,
   Map,
+  Phone,
 } from "lucide-react";
 import { useDomiciliosActivos } from "../logic/useDomiciliosActivos";
 import { useHistorial } from "../logic/useHistorial";
@@ -95,10 +96,28 @@ export default function DomiciliarioHomePage() {
                     <Package size={14} className="mt-0.5 shrink-0" />
                     {domicilio.productos}
                   </p>
+                  <div className="mt-1.5 flex items-center gap-3 text-xs">
+                    <a
+                      href={`tel:${domicilio.cliente.telefono}`}
+                      className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
+                    >
+                      <Phone size={12} />
+                      Llamar
+                    </a>
+                    <a
+                      href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
+                    >
+                      <Map size={12} />
+                      Ver en Maps
+                    </a>
+                  </div>
                 </div>
                 <button
                   onClick={() => handleRecoger(domicilio)}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
                 >
                   <Box size={15} />
                   Recoger
@@ -146,15 +165,24 @@ export default function DomiciliarioHomePage() {
                 <Navigation size={12} />
                 {(distancias[domicilio.id_domicilio] ?? 0).toFixed(2)} km recorridos
               </span>
-              <a
-                href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
-              >
-                <Map size={12} />
-                Ver en Maps
-              </a>
+              <div className="flex items-center gap-3">
+                <a
+                  href={`tel:${domicilio.cliente.telefono}`}
+                  className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
+                >
+                  <Phone size={12} />
+                  Llamar
+                </a>
+                <a
+                  href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
+                >
+                  <Map size={12} />
+                  Ver en Maps
+                </a>
+              </div>
             </div>
 
             <div className="mt-3 flex gap-2">
@@ -200,7 +228,7 @@ export default function DomiciliarioHomePage() {
             <Link
               key={domicilio.id_domicilio}
               href={`/domiciliario/${domicilio.id_domicilio}`}
-              className="flex items-center justify-between px-5 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              className="flex items-center justify-between px-5 py-3 hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
             >
               <div>
                 <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">

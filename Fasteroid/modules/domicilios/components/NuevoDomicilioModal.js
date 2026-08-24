@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   Save,
 } from "lucide-react";
+import { comprimirImagen } from "../logic/imagenUtil";
 
 const MySwal = withReactContent(Swal);
 
@@ -133,7 +134,7 @@ function ClienteStepContent({ onSelect }) {
           <button
             key={cliente.telefono}
             onClick={() => onSelect(cliente)}
-            className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
           >
             <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{cliente.nombre}</span>
             <span className="text-xs text-zinc-500 dark:text-zinc-400">{cliente.telefono}</span>
@@ -288,7 +289,7 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
           <button
             key={ubicacion.id_ubicacion}
             onClick={() => onSelect(ubicacion)}
-            className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
           >
             <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
               {ubicacion.alias_direccion}
@@ -367,8 +368,11 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, onBack, onSubmit, 
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      setFoto(reader.result);
+    reader.onload = async () => {
+      // Se comprime antes de guardar: una foto de celular sin comprimir puede
+      // pesar varios MB y superar el límite de tamaño del body en el servidor.
+      const dataUrl = await comprimirImagen(reader.result);
+      setFoto(dataUrl);
       setFotoError(null);
     };
     reader.readAsDataURL(file);
@@ -593,7 +597,7 @@ function DomiciliarioStepContent({ onBack, onSelect }) {
           <button
             key={domiciliario.telefono}
             onClick={() => onSelect(domiciliario)}
-            className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
           >
             <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
               {domiciliario.nombre}

@@ -2,6 +2,18 @@
 const nextConfig = {
   /* config options here */
   reactCompiler: true,
+  // Por defecto, el dev server de Next.js solo confía en peticiones que lleguen
+  // como localhost (protección CSRF contra el propio dev server). Al entrar desde
+  // el celular por la IP de la LAN o por un túnel (localtunnel/ngrok), el origen no
+  // es localhost y Next.js responde 403 a varias peticiones internas — eso rompe la
+  // hidratación de React y hace que, por ejemplo, el formulario de login caiga al
+  // envío nativo del navegador (GET con la contraseña en la URL) en vez de llamar a
+  // la API. Hay que declarar explícitamente qué orígenes están permitidos.
+  allowedDevOrigins: [
+    "localhost",
+    "192.168.1.58",
+    "*.loca.lt",
+  ],
   // Next.js pasó a ser solo frontend: todo /api/** se reenvía al servidor Express
   // (server/), que es ahora el único dueño de la base de datos y de la sesión. El
   // navegador ve todo como un solo origen (localhost:3000), así que las cookies de

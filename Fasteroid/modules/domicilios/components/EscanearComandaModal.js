@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import {
   Camera,
+  ImageUp,
   Phone,
   User,
   MapPin,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { parseComandaText } from "../logic/comandaParser";
 import { getCurrentPositionAsync } from "../logic/geolocation";
+import { comprimirImagen, rotarImagen } from "../logic/imagenUtil";
 
 const MySwal = withReactContent(Swal);
 const VOLVER = Symbol("volver");
@@ -29,10 +31,13 @@ const ESPACIOS_VALIDOS = [1, 2, 3];
 // puede remontar el contenido de un popup abierto y borrar el estado de React de
 // un componente que abarque varios pasos (ver conventions.md).
 
-// Escala de grises + contraste simple: mejora bastante la lectura de OCR sobre
-// una foto real (fondo con ruido, luz despareja) sin agregar ninguna dependencia
-// — se probó contra una comanda real y subió la confianza de Tesseract de ~39% a
-// ~59% solo con esto más el modo de segmentación de página correcto.
+// Escala de grises simple: ayuda a la lectura de OCR sobre una foto real sin
+// agregar ninguna dependencia. Se probó CON un umbral duro (blanco/negro puro)
+// contra una comanda real fotografiada sobre una mesa metálica con reflejos, y
+// empeoraba mucho el resultado (el brillo desigual del metal hacía que el
+// umbral borrara texto real); se probó sin umbral —solo gris— y el texto
+// reconocible mejoró notablemente (números de teléfono completos, palabras
+// clave como SUBTOTAL/SON legibles). Por eso se dejó solo la conversión a gris.
 function preprocesarImagen(dataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -46,8 +51,7 @@ function preprocesarImagen(dataUrl) {
       const datos = imageData.data;
       for (let i = 0; i < datos.length; i += 4) {
         const gris = 0.299 * datos[i] + 0.587 * datos[i + 1] + 0.114 * datos[i + 2];
-        const valor = gris > 150 ? 255 : gris < 90 ? 0 : gris;
-        datos[i] = datos[i + 1] = datos[i + 2] = valor;
+        datos[i] = datos[i + 1] = datos[i + 2] = gris;
       }
       ctx.putImageData(imageData, 0, 0);
       resolve(canvas);
@@ -57,14 +61,45 @@ function preprocesarImagen(dataUrl) {
   });
 }
 
+// Cuando la orientación está muy equivocada, Tesseract no reconoce ningún
+// carácter — pero en vez de dar confianza baja, a veces reporta una confianza
+// ALTA (~95%) por no encontrar nada que dudar, con el texto vacío. Sin filtrar
+// eso, ese resultado "vacío pero seguro" le gana por confianza a la
+// orientación correcta (que sí trae texto real, con su ruido normal). Por eso
+// la confianza de un intento con muy poco texto reconocido se descarta a 0.
+function confianzaValida({ text, confidence }) {
+  return text.trim().length > 20 ? confidence : 0;
+}
+
+async function intentarLectura(worker, dataUrl) {
+  const imagenProcesada = await preprocesarImagen(dataUrl);
+  const { data } = await worker.recognize(imagenProcesada);
+  return { text: data.text, confidence: confianzaValida(data) };
+}
+
+// El domiciliario no siempre toma la foto en vertical y hacia arriba (de
+// cabeza, en horizontal). Se probó usar la confianza del primer intento como
+// señal para decidir si vale la pena probar otras rotaciones, pero una foto
+// realmente al revés puede igual dar una confianza "razonable" (~35-40%,
+// similar a una foto bien orientada con mala luz) mientras el texto es pura
+// basura — la confianza sola no distingue de forma confiable "mala foto" de
+// "ángulo equivocado". Por eso se prueban SIEMPRE las 4 orientaciones y se usa
+// la de mejor confianza; cuesta más tiempo de lectura, pero es la única forma
+// confiable de no depender de que el domiciliario recuerde tomarla derecha.
 async function leerComanda(dataUrl) {
   const { createWorker } = await import("tesseract.js");
   const worker = await createWorker("spa");
   try {
     await worker.setParameters({ tessedit_pageseg_mode: "4" });
-    const imagenProcesada = await preprocesarImagen(dataUrl);
-    const { data } = await worker.recognize(imagenProcesada);
-    return parseComandaText(data.text);
+
+    let mejor = await intentarLectura(worker, dataUrl);
+    for (const grados of [90, 180, 270]) {
+      const girada = await rotarImagen(dataUrl, grados);
+      const intento = await intentarLectura(worker, girada);
+      if (intento.confidence > mejor.confidence) mejor = intento;
+    }
+
+    return parseComandaText(mejor.text);
   } finally {
     await worker.terminate();
   }
@@ -74,6 +109,8 @@ async function leerComanda(dataUrl) {
 
 function CapturaStepContent({ onListo }) {
   const [leyendo, setLeyendo] = useState(false);
+  const inputCamaraRef = useRef(null);
+  const inputGaleriaRef = useRef(null);
 
   async function handleFoto(e) {
     const file = e.target.files?.[0];
@@ -82,7 +119,11 @@ function CapturaStepContent({ onListo }) {
 
     const reader = new FileReader();
     reader.onload = async () => {
-      const dataUrl = reader.result;
+      // Se comprime antes de leer y guardar: una foto de celular sin comprimir
+      // puede pesar varios MB, lo que hace el OCR lentísimo/impreciso en un
+      // celular real y además puede superar el límite de tamaño del body en
+      // el servidor.
+      const dataUrl = await comprimirImagen(reader.result);
       // Si el OCR falla por completo (ej. worker no carga), se sigue con los
       // campos vacíos en vez de bloquear — el domiciliario los completa a mano.
       const parsed = await leerComanda(dataUrl).catch(() => ({
@@ -110,16 +151,47 @@ function CapturaStepContent({ onListo }) {
     <div className="text-left">
       <p className="mb-3 flex items-start gap-2 text-sm text-zinc-500 dark:text-zinc-400">
         <Camera size={16} className="mt-0.5 shrink-0" />
-        Toma la foto lo más cerca, derecha y con buena luz posible — así se lee mejor
-        automáticamente. Siempre vas a poder revisar y corregir antes de guardar.
+        Toma la foto lo más cerca, derecha y con buena luz posible, o busca una ya tomada — así se
+        lee mejor automáticamente. Siempre vas a poder revisar y corregir antes de guardar.
       </p>
+
+      {/* Dos inputs ocultos: el de cámara lleva `capture="environment"` (abre la
+          cámara directo en el celular), el de galería no lo lleva (abre el
+          selector de archivos/galería normal) — cada botón dispara el suyo. */}
       <input
+        ref={inputCamaraRef}
         type="file"
         accept="image/*"
         capture="environment"
         onChange={handleFoto}
-        className="w-full text-sm"
+        className="hidden"
       />
+      <input
+        ref={inputGaleriaRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFoto}
+        className="hidden"
+      />
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          onClick={() => inputCamaraRef.current?.click()}
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+        >
+          <Camera size={16} />
+          Tomar foto
+        </button>
+        <button
+          type="button"
+          onClick={() => inputGaleriaRef.current?.click()}
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-zinc-300 px-4 py-2.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+        >
+          <ImageUp size={16} />
+          Buscar foto
+        </button>
+      </div>
     </div>
   );
 }
@@ -317,7 +389,7 @@ function UbicacionesStepContent({ cliente, referenciaComanda, onBack, onSelect }
           <button
             key={u.id_ubicacion}
             onClick={() => onSelect(u)}
-            className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
           >
             <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
               {u.alias_direccion}
