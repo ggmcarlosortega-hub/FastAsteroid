@@ -10,6 +10,7 @@ enum MetodoPago {
 }
 
 enum EstadoDomicilio {
+  Asignado
   En_curso
   Entregado
   Cancelado
@@ -65,7 +66,7 @@ entity "Domicilio" as domicilio {
   metodo_pago : MetodoPago <<NULLABLE>>
   estado : EstadoDomicilio
   distancia_km : DECIMAL <<NULLABLE>>
-  espacio_baul : INT
+  espacio_baul : INT <<NULLABLE>>
   foto_productos_url : VARCHAR <<NULLABLE>>
   motivo_cancelacion : VARCHAR <<NULLABLE>>
 }
@@ -88,13 +89,19 @@ ubicacion ||--o{ domicilio : "destino de"
 usuario ||--o{ domicilio : "registra/entrega"
 
 note right of domicilio
-  espacio_baul: valor entre 1 y 3
-  (CHECK espacio_baul BETWEEN 1 AND 3)
+  espacio_baul: NULL mientras estado = 'Asignado';
+  valor entre 1 y 3 una vez recogido
+  (CHECK espacio_baul IS NULL OR BETWEEN 1 AND 3)
   Máximo 3 domicilios "En_curso" por domiciliario,
   uno por espacio_baul
   (UNIQUE INDEX telefono_domiciliario + espacio_baul
    WHERE estado = 'En_curso')
   motivo_cancelacion obligatorio si estado = 'Cancelado'
   (CHECK)
+  estado 'Asignado': el Admin creó y asignó el domicilio,
+  pero el domiciliario aún no lo recoge ni elige espacio_baul
+  id_ubicacion se reasigna al entregar: la ubicación GPS real
+  capturada reemplaza la asignada al crear (reutiliza una ya
+  guardada del cliente si coincide, o crea una nueva)
 end note
 @enduml

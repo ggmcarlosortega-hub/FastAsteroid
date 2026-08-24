@@ -129,6 +129,24 @@ depende del tracking GPS que corre en su celular durante la entrega real. Esto s
 no se difiere — el modelo de datos incluye desde ya quién entregó cada domicilio (ver sección 24),
 pensando en que a futuro podría haber más de un domiciliario/moto.
 
+**Asignación del espacio del baúl (ajustada tras revisión):** cuando el domiciliario registra su propio
+domicilio, elige el espacio del baúl en ese mismo momento porque ya lo tiene en mano. Pero cuando el
+Admin crea y asigna un domicilio, el Admin **no** elige el espacio del baúl — el domicilio queda en un
+estado intermedio, "Asignado" (sin espacio de baúl todavía), y solo el domiciliario, al recogerlo
+físicamente, elige en cuál de sus 3 espacios lo lleva. Recién ahí el domicilio pasa a "En_curso" y entra
+a contar para el límite de 3 simultáneos. El Admin sí ve estos domicilios "Asignado" en su panel
+(pendientes de recoger), pero sin poder tocar el espacio del baúl.
+
+**Corrección de un domicilio ya creado:** el Admin puede editar los `productos` y el `precio` de un
+domicilio existente (por ejemplo si se equivocó al seleccionar los productos al crearlo). No se permite
+editar cliente, ubicación, domiciliario asignado ni espacio del baúl desde esta edición — solo corregir
+el pedido en sí.
+
+**Alcance de las métricas por rol (confirmado, 2026-08-23):** el domiciliario solo ve las estadísticas
+de **su día actual** en su propia vista (`/domiciliario`) — sin selector de semana/mes ni la gráfica de
+ganancias/pérdidas. Las métricas completas (día/semana/mes, ganancias/pérdidas, histórico de todos los
+domiciliarios) quedan reservadas exclusivamente al panel del Administrador.
+
 ## 5. Dashboard administrativo
 
 El sistema contará con un panel administrativo principal donde se mostrará un resumen de las
@@ -165,24 +183,36 @@ coordenadas GPS, productos solicitados, valor del pedido, método de pago, estad
 recorridos, domiciliario que lo registra y entrega, fecha y hora de inicio/entrega, espacio de baúl
 asignado, observaciones.
 
-**Flujo de creación (confirmado):** lo crea el propio domiciliario según la carga que lleva, o el
-administrador asignándolo a un domiciliario (ver sección 4) — cliente, ubicación, productos, **precio**
-(valor del pedido, fijado desde este momento), espacio de baúl (máximo 3 domicilios simultáneos por
-carga, uno por espacio). Al crear el domicilio empieza el tracking de ubicación en segundo plano hasta
-que se marque como entregado o cancelado (ver sección 8).
+**Flujo de creación (confirmado, ajustado tras revisión):** lo crea el propio domiciliario según la carga
+que lleva, o el administrador asignándolo a un domiciliario (ver sección 4) — cliente, ubicación,
+productos, **precio** (valor del pedido, fijado desde este momento). El espacio de baúl (máximo 3
+domicilios simultáneos por carga, uno por espacio) **solo lo elige el domiciliario**: si lo crea él mismo,
+lo elige de una vez al registrarlo; si lo crea el Admin, el domiciliario lo elige después, al recoger el
+domicilio físicamente (ver sección 4 y "Estados del domicilio" más abajo). El tracking de ubicación en
+segundo plano (sección 8) empieza cuando el domicilio pasa a `En curso`, no antes.
 
-**Captura de ubicación al entregar (confirmado):** al presionar "Entregado", además de registrar el
-pago, el sistema toma la ubicación GPS actual del domiciliario. Si esa ubicación no coincide con
-ninguna ya guardada del cliente, se guarda como una ubicación nueva; si coincide con una existente, no
-se duplica — solo se confirma la entrega (ver sección 22).
+**Captura de ubicación al entregar (confirmado, ajustado tras segunda revisión):** al presionar
+"Entregado", el sistema exige la ubicación GPS actual del domiciliario — sin ella no se puede confirmar
+la entrega. Esa ubicación **reemplaza** la que quedó asignada al domicilio al crearlo, en vez de solo
+compararse contra ella: el cliente muchas veces no tiene clara su ubicación exacta y el Admin puede
+equivocarse al asignarla por la rapidez con la que despacha — el punto real donde se hizo la entrega es
+la fuente de verdad. Concretamente: se compara (Haversine) contra las ubicaciones ya guardadas del
+cliente; si coincide con una existente, el domicilio queda apuntando a esa (no se duplica, ver sección
+22) y todo pasa en un solo panel (método de pago + valor cobrado). Si no coincide con ninguna, ese
+primer panel no basta —no pide nombre de entrada— y recién ahí se abre un **segundo panel**, exigiendo
+el nombre del lugar antes de crear la ubicación nueva y cerrar la entrega. (Versión
+anterior de esta sección: comparar y solo marcar la entrega como "incoherente" sin corregir el registro
+— se descartó porque no resolvía el problema real, solo lo señalaba.)
 
-**Estados del domicilio (modelo vigente):** `En curso`, `Entregado`, `Cancelado` (con motivo). El
-planteamiento original contemplaba estados más granulares (`Pendiente`, `En preparación`, `En camino`,
-`No entregado` como distinto de `Cancelado`); no se incluyeron en el MVP porque el domiciliario registra
-el domicilio cuando ya sale a entregarlo —no hay un flujo previo de "pedido pendiente de asignar"— así
-que esos estados intermedios no aplican con el flujo de trabajo confirmado. El campo `motivo` de
-cancelación puede absorber matices como "no encontré al cliente" sin necesidad de un estado aparte. Si
-en el uso real se necesitan, se agregan después.
+**Estados del domicilio (modelo vigente, ajustado tras revisión):** `Asignado`, `En curso`, `Entregado`,
+`Cancelado` (con motivo). El estado `Asignado` es nuevo: existe únicamente para domicilios creados por el
+Admin, en la ventana de tiempo entre que el Admin lo asigna y el domiciliario lo recoge y elige el
+espacio del baúl — no cuenta para el límite de 3 domicilios simultáneos ni tiene tracking GPS activo
+todavía. El planteamiento original contemplaba estados más granulares (`Pendiente`, `En preparación`,
+`En camino`, `No entregado` como distinto de `Cancelado`); siguen sin incluirse porque, salvo por la
+espera de recogida que ya cubre `Asignado`, el resto del flujo no tiene pasos intermedios reales en este
+negocio. El campo `motivo` de cancelación puede absorber matices como "no encontré al cliente" sin
+necesidad de un estado aparte. Si en el uso real se necesitan más estados, se agregan después.
 
 Marcar como **entregado** detiene el tracking, calcula la distancia recorrida y asocia el pago
 recibido. Marcar como **cancelado** requiere motivo. Se mantiene un historial completo por cliente y
@@ -242,11 +272,12 @@ guardadas, generar rutas y calcular distancias. **Decisión confirmada:** no se 
 calcular kilómetros ni rutas — el cálculo de distancia se hace con GPS + Haversine (sección 8), sin
 costo.
 
-Queda pendiente de evaluar, como idea de Fase 3, un botón "Iniciar ruta" que abra la ubicación guardada
-directamente en la app de Maps del celular mediante un deep link (`geo:` o
-`https://maps.google.com/?q=lat,lng`), sin usar la API de Google — solo abre navegación externa, no
-calcula nada del lado del sistema. Es de bajo costo de construir y no bloquea el MVP. Alternativas como
-OpenStreetMap podrían evaluarse si más adelante se necesita algo más.
+**Implementado (2026-08-23), adelantado de Fase 3:** un botón "Ver en Google Maps" que abre la
+coordenada guardada de la ubicación directamente en la app de Maps del celular (o el navegador) mediante
+un deep link público (`https://www.google.com/maps/search/?api=1&query=lat,lng`), sin usar la API de
+Google — solo abre navegación externa, no calcula nada del lado del sistema. Presente en el detalle de
+cada domicilio y en las tarjetas de domicilios activos del domiciliario. Alternativas como OpenStreetMap
+podrían evaluarse si más adelante se necesita algo más.
 
 ## 11. Módulo de mantenimiento y combustible
 
@@ -389,21 +420,31 @@ Baúl: Espacio 1
 [ Iniciar ruta ]
 ```
 
-## 18. Registro mediante comandas (OCR) — Fase 2
+## 18. Registro mediante comandas (OCR) — Fase 2 (implementado, 2026-08-23)
 
-El sistema contempla usar la cámara del teléfono para digitalizar una comanda física: el domiciliario
-toma una fotografía y el sistema extrae automáticamente teléfono, dirección, productos, cantidades,
-valor del pedido y observaciones, usando **OCR (Reconocimiento Óptico de Caracteres)**.
+**Confirmado y construido:** el domiciliario fotografía la comanda física (foto ya usada además como la
+foto obligatoria del pedido, sin pedir una segunda) y el sistema extrae automáticamente teléfono,
+nombre del cliente, referencia de dirección, productos y valor total, usando **Tesseract.js** — OCR que
+corre 100% en el navegador del celular (WebAssembly), sin costo ni API key, en línea con la decisión de
+no depender de APIs de pago. La imagen se preprocesa (escala de grises + contraste) antes de leerla, lo
+que sube notablemente la confianza del OCR sobre una foto real.
 
-La cámara puede usarse en tiempo real (escaneo directo) o sobre una imagen ya almacenada en el
-dispositivo. El sistema debe mostrar la información extraída **antes de guardarla**, para que el
-domiciliario pueda verificar y corregir cualquier dato mal interpretado, y así prellenar el formulario
-de domicilio (editable antes de confirmar) y marcar el espacio del baúl asignado.
+La información extraída se muestra siempre en un paso de revisión, **editable antes de confirmar**
+(exigido desde el planteamiento original) — necesario en la práctica: sobre una comanda real fotografiada
+con el fondo visible, la confianza del OCR ronda 40-60% y el teléfono es el campo que más falla, así que
+el domiciliario debe revisarlo con cuidado antes de continuar. Con el teléfono ya corregido, el sistema
+busca si el cliente existe: si tiene ubicaciones guardadas, se eligen de una lista (o se indica que es una
+dirección nueva); si no existe o no tiene ninguna, se crea una ubicación nueva con la referencia de texto
+de la comanda como alias y la posición GPS del domiciliario en ese momento como coordenada de partida —
+temporal, porque el flujo de entrega (sección 6) ya la reemplaza por la posición real capturada ahí, sin
+que el domiciliario tenga que hacer nada extra.
 
-## 19. Acciones rápidas para llamadas — Fase 2
+## 19. Acciones rápidas para llamadas — Fase 2 (implementado, 2026-08-23)
 
-Cuando el sistema obtiene el número telefónico del cliente (por registro manual o por OCR de la
-comanda), debe ofrecer una acción para llamar directamente, evitando copiar el número a mano:
+**Confirmado y construido:** cuando el sistema tiene el número telefónico del cliente (por registro
+manual, por escaneo de comanda, o en el detalle de cualquier domicilio) se ofrece un botón **Llamar**
+que abre el marcador nativo del celular con un enlace `tel:` estándar — no requiere ningún permiso
+especial del navegador, el sistema operativo se encarga de confirmar la llamada:
 
 ```text
 Cliente: Juan Pérez
@@ -506,7 +547,8 @@ administrativo (sección 5) y las consultas por período (sección 7).
 El modelo vigente está en [`databases.plantuml`](databases.plantuml), con las entidades `Usuario`,
 `Cliente`, `Ubicacion`, `Domicilio` y `Registro_Mantenimiento`. Decisiones ya aplicadas:
 
-1. **`EspacioBaul` como `INT` con `CHECK BETWEEN 1 AND 3`**, en vez de enum (sección 16).
+1. **`EspacioBaul` como `INT` nullable con `CHECK` (`NULL` o entre 1 y 3)**, en vez de enum (sección 16).
+   Es `NULL` mientras el domicilio está `Asignado` (creado por el Admin, aún sin recoger) — ver punto 12.
 2. **Entidad `Usuario`** (teléfono como PK, rol `Admin`/`Domiciliario`) desde el MVP, no diferida.
 3. **`Domicilio` relacionado con `Usuario`** mediante `telefono_domiciliario` (FK) — quien lo registró y
    entrega, permitiendo que cada domiciliario vea solo lo suyo y el admin vea el total.
@@ -530,6 +572,15 @@ El modelo vigente está en [`databases.plantuml`](databases.plantuml), con las e
     domicilio (a diferencia de `valor_recaudado`, que se registra al entregar) precisamente para que
     exista un valor conocido de antemano sin importar si el domicilio termina entregado o cancelado —
     es la base de la gráfica de ganancias/pérdidas del panel de Admin (sección 5).
+12. **Estado `Asignado` agregado a `EstadoDomicilio`**: domicilios creados por el Admin nacen en este
+    estado (sin `espacio_baul`) hasta que el domiciliario los recoge y elige el espacio, momento en que
+    pasan a `En_curso` (sección 4 y 6). No participa del índice único parcial del punto 10 porque su
+    `espacio_baul` siempre es `NULL`.
+13. **`Domicilio.id_ubicacion` se reasigna al entregar** (revisión posterior al punto 13 original, que
+    proponía un campo `distancia_ubicacion_entrega_km` de solo advertencia — se descartó, ver sección 6):
+    la ubicación GPS capturada al entregar reemplaza la ubicación asignada al crear el domicilio,
+    reutilizando una ubicación existente del cliente si coincide (Haversine) o creando una nueva si no.
+    No se agregó ningún campo nuevo al modelo — es una reasignación de la FK ya existente.
 
 Pendiente de modelar:
 
@@ -567,12 +618,15 @@ Todas las preguntas abiertas del planteamiento original quedaron resueltas:
 | Roles | Cuentas separadas desde el MVP |
 | Asignación de domicilios | **Actualizado (ver sección 4):** el domiciliario sigue registrando los suyos según la carga que lleva, y además el administrador puede crear un domicilio y asignarlo a un domiciliario específico desde el panel |
 | ¿Se necesita el campo `nombre` en `Cliente`? | Sí, obligatorio — agregado al modelo en el Bloque 1 del backlog |
+| ¿Quién elige el espacio del baúl cuando el Admin asigna el domicilio? | El Admin no lo elige — el domicilio queda `Asignado` sin espacio hasta que el domiciliario lo recoge y lo elige él mismo (ver sección 4 y 6) |
+| ¿Qué pasa si la ubicación capturada al entregar no coincide con la asignada por el Admin? | **Revisado:** ya no se marca solo como advertencia — la ubicación real capturada al entregar reemplaza la asignada (reutilizando una ya guardada del cliente si coincide, o creando una nueva) porque el cliente o el Admin pueden haberse equivocado al asignarla (ver sección 6) |
+| ¿Puede el Admin corregir un domicilio ya creado? | Sí, `productos` y `precio` — pensado para errores al seleccionar productos (ver sección 4) |
 
 **Preguntas nuevas, todavía abiertas** (no bloquean el arranque del MVP):
 
 | Pregunta | Estado |
 |---|---|
-| ¿Hacen falta estados intermedios del domicilio (`Pendiente`, `En preparación`, `En camino`)? | Pendiente — el flujo actual no parece necesitarlos, se revisa con uso real |
+| ¿Hacen falta estados intermedios del domicilio (`Pendiente`, `En preparación`, `En camino`)? | Parcialmente resuelto — se agregó `Asignado` (espera de recogida cuando el Admin crea el domicilio); el resto no parece necesitarse, se revisa con uso real |
 | ¿Se necesitan campos extra de mantenimiento (tipo de combustible, estación, repuestos)? | Pendiente — se agregan si el negocio los pide |
 
 ## 27. Riesgo técnico a vigilar
@@ -588,11 +642,26 @@ vez de un recorrido real — se decide con datos reales una vez esté en uso, no
 
 ## 28. Stack técnico
 
-El repo ya tiene una carpeta `Fasteroid/` con un componente `page.js` de **Next.js**, así que el
-dashboard administrativo se construye ahí. Para la app de captura del domiciliario (cámara, GPS), la
-opción más simple es que sea el mismo Next.js como **PWA** (funciona en el navegador del celular, evita
-mantener una app nativa aparte); si más adelante se necesita OCR en tiempo real o acceso más profundo a
-la cámara, se puede reevaluar una app nativa o híbrida solo para esa parte.
+**Actualizado (2026-08-23):** el backend se migró de rutas de API de Next.js + Prisma + SQLite a un
+servidor **Express** separado (`server/`) que habla **MySQL** directamente con `mysql2` (sin ORM,
+SQL escrito a mano). Motivo: entender con precisión qué pasa cuando algo falla (pool de conexiones,
+caída de la base de datos, condiciones de carrera) requiere ver el manejo de errores explícito, no
+abstraído detrás de un ORM. El detalle completo de la migración, las reglas de traducción del modelo
+de datos y una sección de escalabilidad/manejo de fallos están en
+[`aplicativos.md`](aplicativos.md).
+
+- **Frontend:** `Fasteroid/` — Next.js (App Router), ahora exclusivamente frontend. Un `rewrite` en
+  `next.config.mjs` reenvía todo `/api/**` al servidor Express, así el navegador ve un solo origen y
+  las cookies de sesión funcionan sin configurar CORS. Sigue siendo la app de captura del
+  domiciliario (cámara, GPS) como **PWA** en el navegador del celular.
+- **Backend:** `server/` — Express + `mysql2`, dueño único de la base de datos y de la sesión (JWT
+  con `jose`, cookie `httpOnly`, bcrypt para contraseñas — mismo esquema de antes, reimplementado sin
+  Next.js).
+- **Base de datos:** MySQL (antes SQLite). El modelo de datos (entidades, relaciones, reglas de
+  negocio) no cambió — sección 24 y `databases.plantuml` siguen siendo la fuente de verdad conceptual.
+- **Backend anterior (Next.js + Prisma + SQLite):** archivado completo, sin borrar, en
+  [`backend-legado-nextjs-prisma-sqlite/`](backend-legado-nextjs-prisma-sqlite/) en la raíz del repo,
+  con instrucciones de cómo restaurarlo si hiciera falta volver atrás.
 
 ## 29. Posible estructura de módulos
 
