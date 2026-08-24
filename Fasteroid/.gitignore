@@ -43,3 +43,6 @@ next-env.d.ts
 # database
 /dev.db
 /dev.db-journal
+
+# caché de datos de entrenamiento de Tesseract.js (se descarga en runtime, no es código)
+*.traineddata

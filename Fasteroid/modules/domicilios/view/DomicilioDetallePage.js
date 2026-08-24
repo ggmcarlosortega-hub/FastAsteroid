@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, usePathname } from "next/navigation";
 import {
   ArrowLeft,
   User,
@@ -13,10 +13,14 @@ import {
   Navigation,
   Bike,
   AlertCircle,
+  Pencil,
+  Map,
 } from "lucide-react";
 import { useDomicilioDetalle } from "../logic/useDomicilioDetalle";
+import { googleMapsUrl } from "../logic/googleMapsUrl";
 
 const ESTADO_BADGE = {
+  Asignado: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
   En_curso: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
   Entregado: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
   Cancelado: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
@@ -37,7 +41,9 @@ function Dato({ icon: Icon, label, children }) {
 export default function DomicilioDetallePage() {
   const { id } = useParams();
   const router = useRouter();
-  const { domicilio, loading, notFound } = useDomicilioDetalle(id);
+  const pathname = usePathname();
+  const esAdmin = pathname.startsWith("/admin");
+  const { domicilio, loading, notFound, handleEditar } = useDomicilioDetalle(id);
 
   if (loading) {
     return <p className="text-sm text-zinc-400">Cargando...</p>;
@@ -72,9 +78,20 @@ export default function DomicilioDetallePage() {
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
           {domicilio.cliente.nombre}
         </h1>
-        <span className={`rounded-full px-3 py-1 text-xs font-medium ${ESTADO_BADGE[domicilio.estado]}`}>
-          {domicilio.estado.replace("_", " ")}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-3 py-1 text-xs font-medium ${ESTADO_BADGE[domicilio.estado]}`}>
+            {domicilio.estado.replace("_", " ")}
+          </span>
+          {esAdmin && (
+            <button
+              onClick={handleEditar}
+              className="flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              <Pencil size={13} />
+              Editar
+            </button>
+          )}
+        </div>
       </div>
 
       {domicilio.foto_productos_url && (
@@ -87,12 +104,32 @@ export default function DomicilioDetallePage() {
       )}
 
       <div className="mt-6 grid grid-cols-1 gap-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 sm:grid-cols-2">
-        <Dato icon={Phone} label="Teléfono del cliente">
-          {domicilio.cliente.telefono}
-        </Dato>
-        <Dato icon={MapPin} label="Ubicación de entrega">
-          {domicilio.ubicacion.alias_direccion} ({domicilio.ubicacion.latitud}, {domicilio.ubicacion.longitud})
-        </Dato>
+        <div className="flex items-center justify-between">
+          <Dato icon={Phone} label="Teléfono del cliente">
+            {domicilio.cliente.telefono}
+          </Dato>
+          <a
+            href={`tel:${domicilio.cliente.telefono}`}
+            className="flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <Phone size={13} />
+            Llamar
+          </a>
+        </div>
+        <div className="flex items-center justify-between">
+          <Dato icon={MapPin} label="Ubicación de entrega">
+            {domicilio.ubicacion.alias_direccion} ({domicilio.ubicacion.latitud}, {domicilio.ubicacion.longitud})
+          </Dato>
+          <a
+            href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <Map size={13} />
+            Maps
+          </a>
+        </div>
         <Dato icon={Package} label="Productos">
           {domicilio.productos}
         </Dato>
@@ -100,7 +137,7 @@ export default function DomicilioDetallePage() {
           ${domicilio.precio.toLocaleString("es-CO")}
         </Dato>
         <Dato icon={Box} label="Espacio del baúl">
-          Espacio {domicilio.espacio_baul}
+          {domicilio.espacio_baul != null ? `Espacio ${domicilio.espacio_baul}` : "Sin recoger todavía"}
         </Dato>
         <Dato icon={User} label="Domiciliario">
           {domicilio.domiciliario.nombre}

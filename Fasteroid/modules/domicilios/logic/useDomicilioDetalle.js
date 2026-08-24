@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Swal from "sweetalert2";
+import { openEditarDomicilioModal } from "../components/EditarDomicilioModal";
 
 export function useDomicilioDetalle(id) {
   const [domicilio, setDomicilio] = useState(null);
@@ -24,5 +26,32 @@ export function useDomicilioDetalle(id) {
     cargar();
   }, [cargar]);
 
-  return { domicilio, loading, notFound };
+  async function handleEditar() {
+    const valores = await openEditarDomicilioModal(domicilio);
+    if (!valores) return;
+
+    const res = await fetch(`/api/domicilios/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(valores),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      await Swal.fire({ icon: "error", title: "No se pudo guardar", text: data.error });
+      return;
+    }
+
+    await Swal.fire({
+      toast: true,
+      position: "top-end",
+      icon: "success",
+      title: "Domicilio actualizado",
+      timer: 1200,
+      showConfirmButton: false,
+    });
+    cargar();
+  }
+
+  return { domicilio, loading, notFound, handleEditar };
 }

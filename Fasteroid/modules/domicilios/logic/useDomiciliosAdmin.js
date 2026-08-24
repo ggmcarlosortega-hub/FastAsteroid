@@ -18,6 +18,7 @@ function inicioDe(periodo) {
 
 export function useDomiciliosAdmin() {
   const [activos, setActivos] = useState([]);
+  const [asignados, setAsignados] = useState([]);
   const [periodo, setPeriodo] = useState("mes");
   const [historial, setHistorial] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,11 +26,13 @@ export function useDomiciliosAdmin() {
   const cargar = useCallback(async (p) => {
     setLoading(true);
     const desde = inicioDe(p).toISOString();
-    const [activosRes, historialRes] = await Promise.all([
+    const [activosRes, asignadosRes, historialRes] = await Promise.all([
       fetch("/api/domicilios?vista=activos"),
+      fetch("/api/domicilios?vista=asignados"),
       fetch(`/api/domicilios?desde=${encodeURIComponent(desde)}`),
     ]);
     setActivos(await activosRes.json());
+    setAsignados(await asignadosRes.json());
     setHistorial(await historialRes.json());
     setLoading(false);
   }, []);
@@ -59,5 +62,5 @@ export function useDomiciliosAdmin() {
     .filter((d) => d.estado === "Cancelado")
     .reduce((suma, d) => suma + (d.precio ?? 0), 0);
 
-  return { activos, historial, periodo, setPeriodo, loading, handleNuevo, ganancias, perdidas };
+  return { activos, asignados, historial, periodo, setPeriodo, loading, handleNuevo, ganancias, perdidas };
 }

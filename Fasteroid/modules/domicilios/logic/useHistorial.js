@@ -14,8 +14,8 @@ function inicioDe(periodo) {
   return new Date(ahora.getFullYear(), ahora.getMonth(), 1);
 }
 
-export function useHistorial() {
-  const [periodo, setPeriodo] = useState("mes");
+export function useHistorial(periodoFijo) {
+  const [periodo, setPeriodo] = useState(periodoFijo ?? "mes");
   const [domicilios, setDomicilios] = useState([]);
   const [loading, setLoading] = useState(true);
 

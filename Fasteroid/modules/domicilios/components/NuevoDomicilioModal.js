@@ -352,7 +352,7 @@ function openUbicacionStep(cliente) {
   });
 }
 
-function DetalleStepContent({ espaciosOcupados, onBack, onSubmit, serverError }) {
+function DetalleStepContent({ espaciosOcupados, pedirEspacio, onBack, onSubmit, serverError }) {
   const [foto, setFoto] = useState(null);
   const [fotoError, setFotoError] = useState(null);
   const {
@@ -361,7 +361,7 @@ function DetalleStepContent({ espaciosOcupados, onBack, onSubmit, serverError })
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: { productos: "", precio: "", espacio_baul: "" } });
 
-  const espaciosLibres = [1, 2, 3].filter((e) => !espaciosOcupados.includes(e));
+  const espaciosLibres = pedirEspacio ? [1, 2, 3].filter((e) => !espaciosOcupados.includes(e)) : [];
 
   function handleFoto(e) {
     const file = e.target.files?.[0];
@@ -382,7 +382,7 @@ function DetalleStepContent({ espaciosOcupados, onBack, onSubmit, serverError })
     onSubmit({
       productos: values.productos,
       precio: Number(values.precio),
-      espacio_baul: Number(values.espacio_baul),
+      ...(pedirEspacio ? { espacio_baul: Number(values.espacio_baul) } : {}),
       foto_productos_url: foto,
     });
   }
@@ -418,25 +418,27 @@ function DetalleStepContent({ espaciosOcupados, onBack, onSubmit, serverError })
         {errors.precio && <p className="mt-1 text-xs text-red-500">{errors.precio.message}</p>}
       </div>
 
-      <div>
-        <label className="mb-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Espacio del baúl
-        </label>
-        <select
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-          {...register("espacio_baul", { required: "Obligatorio" })}
-        >
-          <option value="">Selecciona un espacio libre</option>
-          {espaciosLibres.map((e) => (
-            <option key={e} value={e}>
-              Espacio {e}
-            </option>
-          ))}
-        </select>
-        {errors.espacio_baul && (
-          <p className="mt-1 text-xs text-red-500">{errors.espacio_baul.message}</p>
-        )}
-      </div>
+      {pedirEspacio && (
+        <div>
+          <label className="mb-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Espacio del baúl
+          </label>
+          <select
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+            {...register("espacio_baul", { required: "Obligatorio" })}
+          >
+            <option value="">Selecciona un espacio libre</option>
+            {espaciosLibres.map((e) => (
+              <option key={e} value={e}>
+                Espacio {e}
+              </option>
+            ))}
+          </select>
+          {errors.espacio_baul && (
+            <p className="mt-1 text-xs text-red-500">{errors.espacio_baul.message}</p>
+          )}
+        </div>
+      )}
 
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -474,14 +476,14 @@ function DetalleStepContent({ espaciosOcupados, onBack, onSubmit, serverError })
           className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           <Save size={15} />
-          Iniciar domicilio
+          {pedirEspacio ? "Iniciar domicilio" : "Asignar domicilio"}
         </button>
       </div>
     </form>
   );
 }
 
-function openDetalleStep(espaciosOcupados, serverError) {
+function openDetalleStep(espaciosOcupados, serverError, pedirEspacio = true) {
   return new Promise((resolve) => {
     let resolved = false;
     MySwal.fire({
@@ -489,6 +491,7 @@ function openDetalleStep(espaciosOcupados, serverError) {
       html: (
         <DetalleStepContent
           espaciosOcupados={espaciosOcupados}
+          pedirEspacio={pedirEspacio}
           serverError={serverError}
           onBack={() => {
             resolved = true;
@@ -680,12 +683,9 @@ export async function openNuevoDomicilioModalAdmin() {
       continue;
     }
 
-    // paso === "detalle"
-    const activosRes = await fetch(`/api/domicilios?vista=activos&telefono=${domiciliario.telefono}`);
-    const activos = await activosRes.json();
-    const espaciosOcupados = activos.map((d) => d.espacio_baul);
-
-    const resultado = await openDetalleStep(espaciosOcupados, detalleError);
+    // paso === "detalle" — el Admin no elige espacio de baúl: lo hace el
+    // domiciliario al recoger el domicilio (sección 4 del documento).
+    const resultado = await openDetalleStep([], detalleError, false);
     if (resultado === VOLVER) {
       detalleError = null;
       paso = "domiciliario";

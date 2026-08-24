@@ -5,10 +5,14 @@ import Swal from "sweetalert2";
 import { haversineKm } from "./haversine";
 import { getCurrentPositionAsync } from "./geolocation";
 import { openNuevoDomicilioModal } from "../components/NuevoDomicilioModal";
+import { openEscanearComandaModal } from "../components/EscanearComandaModal";
 import { openEntregarModal } from "../components/EntregarModal";
+import { openNombreLugarModal } from "../components/NombreLugarModal";
+import { openRecogerModal } from "../components/RecogerModal";
 
 export function useDomiciliosActivos() {
   const [activos, setActivos] = useState([]);
+  const [asignados, setAsignados] = useState([]);
   const [distancias, setDistancias] = useState({});
   const [loading, setLoading] = useState(true);
   const activosRef = useRef([]);
@@ -17,9 +21,12 @@ export function useDomiciliosActivos() {
 
   const cargar = useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/domicilios?vista=activos");
-    const data = await res.json();
-    setActivos(data);
+    const [activosRes, asignadosRes] = await Promise.all([
+      fetch("/api/domicilios?vista=activos"),
+      fetch("/api/domicilios?vista=asignados"),
+    ]);
+    setActivos(await activosRes.json());
+    setAsignados(await asignadosRes.json());
     setLoading(false);
   }, []);
 
@@ -104,27 +111,108 @@ export function useDomiciliosActivos() {
     cargar();
   }
 
+  async function handleEscanear() {
+    if (activos.length >= 3) {
+      await Swal.fire({
+        icon: "info",
+        title: "Ya tienes 3 domicilios en curso",
+        text: "Marca alguno como entregado o cancelado antes de crear otro.",
+      });
+      return;
+    }
+    const creado = await openEscanearComandaModal(espaciosOcupados);
+    if (!creado) return;
+    await Swal.fire({
+      toast: true,
+      position: "top-end",
+      icon: "success",
+      title: "Domicilio registrado desde la comanda",
+      timer: 1500,
+      showConfirmButton: false,
+    });
+    cargar();
+  }
+
   async function handleEntregar(domicilio) {
     // Se captura al presionar "Entregado" — es la ubicación real donde está el
-    // domiciliario al llegar, no la ubicación por defecto del domicilio (sección 22).
+    // domiciliario al llegar, y reemplaza la ubicación asignada al crear el
+    // domicilio (sección 6: el cliente puede no saber bien dónde vive, o el Admin
+    // se equivoca por rapidez al asignar). Es obligatoria: sin ella no hay cómo
+    // corregir la ubicación, así que se bloquea la entrega si el GPS no responde.
     const ubicacionEntrega = await getCurrentPositionAsync();
+    if (!ubicacionEntrega) {
+      await Swal.fire({
+        icon: "error",
+        title: "No se pudo capturar tu ubicación",
+        text: "Activa el GPS/la ubicación del navegador e intenta de nuevo.",
+      });
+      return;
+    }
 
     const valores = await openEntregarModal(distancias[domicilio.id_domicilio], domicilio.precio);
     if (!valores) return;
 
-    const res = await fetch(`/api/domicilios/${domicilio.id_domicilio}/entregar`, {
+    const payload = {
+      ...valores,
+      distancia_km: distancias[domicilio.id_domicilio] ?? null,
+      ubicacion_entrega: ubicacionEntrega,
+    };
+
+    let res = await fetch(`/api/domicilios/${domicilio.id_domicilio}/entregar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...valores,
-        distancia_km: distancias[domicilio.id_domicilio] ?? null,
-        ubicacion_entrega: ubicacionEntrega,
-      }),
+      body: JSON.stringify(payload),
+    });
+    let data = await res.json();
+
+    // La ubicación capturada no coincide con ninguna guardada del cliente — recién
+    // acá se le pide el nombre al domiciliario, no de entrada (sección 6).
+    if (!res.ok && data.requiereNombreLugar) {
+      const nombreLugar = await openNombreLugarModal();
+      if (!nombreLugar) return;
+
+      res = await fetch(`/api/domicilios/${domicilio.id_domicilio}/entregar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, nombre_lugar: nombreLugar }),
+      });
+      data = await res.json();
+    }
+
+    if (!res.ok) {
+      await Swal.fire({ icon: "error", title: "No se pudo confirmar", text: data.error });
+      return;
+    }
+
+    let title = "Domicilio entregado";
+    if (data.ubicacionNueva) title = "Domicilio entregado — nueva ubicación guardada";
+    else if (data.ubicacionActualizada) title = "Domicilio entregado — ubicación corregida";
+
+    await Swal.fire({
+      toast: true,
+      position: "top-end",
+      icon: "success",
+      title,
+      timer: 1800,
+      showConfirmButton: false,
+    });
+    cargar();
+  }
+
+  async function handleRecoger(domicilio) {
+    const espaciosOcupados = activos.map((d) => d.espacio_baul);
+    const valores = await openRecogerModal(espaciosOcupados);
+    if (!valores) return;
+
+    const res = await fetch(`/api/domicilios/${domicilio.id_domicilio}/recoger`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(valores),
     });
     const data = await res.json();
 
     if (!res.ok) {
-      await Swal.fire({ icon: "error", title: "No se pudo confirmar", text: data.error });
+      await Swal.fire({ icon: "error", title: "No se pudo recoger", text: data.error });
       return;
     }
 
@@ -132,8 +220,8 @@ export function useDomiciliosActivos() {
       toast: true,
       position: "top-end",
       icon: "success",
-      title: data.ubicacionGuardada ? "Domicilio entregado — nueva ubicación guardada" : "Domicilio entregado",
-      timer: 1800,
+      title: "Domicilio recogido",
+      timer: 1200,
       showConfirmButton: false,
     });
     cargar();
@@ -177,5 +265,15 @@ export function useDomiciliosActivos() {
     cargar();
   }
 
-  return { activos, distancias, loading, handleNuevo, handleEntregar, handleCancelar };
+  return {
+    activos,
+    asignados,
+    distancias,
+    loading,
+    handleNuevo,
+    handleEscanear,
+    handleEntregar,
+    handleCancelar,
+    handleRecoger,
+  };
 }
