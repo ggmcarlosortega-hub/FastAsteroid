@@ -1,8 +1,14 @@
-import { getSession } from "../../lib/auth";
-import AdminHeader from "../../components/AdminHeader";
+"use client";
 
-export default async function AdminLayout({ children }) {
-  const session = await getSession();
+import AdminHeader from "../../components/AdminHeader";
+import { useSesion } from "../../lib/useSesion";
+
+export default function AdminLayout({ children }) {
+  const { session, loading } = useSesion("Admin");
+
+  if (loading || !session) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">

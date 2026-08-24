@@ -6,25 +6,36 @@ import {
   MapPin,
   Bike,
   CheckCircle2,
+  XCircle,
   LogIn,
 } from "lucide-react";
-import { prisma } from "../lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+// Server Component: no hay origen de navegador del que colgarse, así que se llama
+// directo a Express (no a través del rewrite, que es solo para el navegador).
+async function obtenerStats() {
+  const apiUrl = process.env.API_URL ?? "http://localhost:4000";
+  try {
+    const res = await fetch(`${apiUrl}/api/stats`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    // El backend puede estar caído (ver sección de escalabilidad en aplicativos.md)
+    // — la landing no debe romperse por eso, solo mostrar que no hay conexión.
+    return null;
+  }
+}
+
 export default async function Home() {
-  const [usuarios, clientes, ubicaciones, domicilios] = await Promise.all([
-    prisma.usuario.count(),
-    prisma.cliente.count(),
-    prisma.ubicacion.count(),
-    prisma.domicilio.count(),
-  ]);
+  const datos = await obtenerStats();
+  const conectado = datos !== null;
 
   const stats = [
-    { label: "Roles", value: usuarios, icon: Users },
-    { label: "Clientes", value: clientes, icon: Users },
-    { label: "Ubicaciones", value: ubicaciones, icon: MapPin },
-    { label: "Domicilios", value: domicilios, icon: Bike },
+    { label: "Roles", value: datos?.usuarios ?? "—", icon: Users },
+    { label: "Clientes", value: datos?.clientes ?? "—", icon: Users },
+    { label: "Ubicaciones", value: datos?.ubicaciones ?? "—", icon: MapPin },
+    { label: "Domicilios", value: datos?.domicilios ?? "—", icon: Bike },
   ];
 
   return (
@@ -42,10 +53,17 @@ export default async function Home() {
           mantenimiento del vehículo en un solo lugar.
         </p>
 
-        <div className="mt-6 flex items-center gap-2 rounded-full bg-green-100 px-4 py-1.5 text-sm font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
-          <CheckCircle2 size={16} />
-          Backend y base de datos conectados
-        </div>
+        {conectado ? (
+          <div className="mt-6 flex items-center gap-2 rounded-full bg-green-100 px-4 py-1.5 text-sm font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+            <CheckCircle2 size={16} />
+            Backend y base de datos conectados
+          </div>
+        ) : (
+          <div className="mt-6 flex items-center gap-2 rounded-full bg-red-100 px-4 py-1.5 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
+            <XCircle size={16} />
+            No se pudo conectar con el backend
+          </div>
+        )}
 
         <div className="mt-10 grid w-full grid-cols-2 gap-4 sm:grid-cols-4">
           {stats.map(({ label, value, icon: Icon }) => (
@@ -74,7 +92,7 @@ export default async function Home() {
 
         <div className="mt-6 flex items-center gap-1.5 text-xs text-zinc-400 dark:text-zinc-600">
           <DatabaseZap size={14} />
-          SQLite + Prisma · Next.js
+          MySQL + Express · Next.js
         </div>
       </div>
     </div>

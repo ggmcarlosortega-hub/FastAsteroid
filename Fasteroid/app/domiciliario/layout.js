@@ -1,8 +1,14 @@
-import { getSession } from "../../lib/auth";
-import DomiciliarioHeader from "../../components/DomiciliarioHeader";
+"use client";
 
-export default async function DomiciliarioLayout({ children }) {
-  const session = await getSession();
+import DomiciliarioHeader from "../../components/DomiciliarioHeader";
+import { useSesion } from "../../lib/useSesion";
+
+export default function DomiciliarioLayout({ children }) {
+  const { session, loading } = useSesion("Domiciliario");
+
+  if (loading || !session) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">

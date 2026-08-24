@@ -50,11 +50,15 @@ model Ubicacion {
 }
 
 /// metodo_pago: "Efectivo" | "Transferencia"
-/// estado: "En_curso" | "Entregado" | "Cancelado"
+/// estado: "Asignado" | "En_curso" | "Entregado" | "Cancelado"
 model Domicilio {
   id_domicilio           String    @id @default(uuid())
   telefono_cliente       String
   telefono_domiciliario  String
+  // Se fija al crear el domicilio, pero se reemplaza al entregar por la ubicación
+  // GPS real capturada en ese momento (existente del cliente o una nueva) — la
+  // ubicación asignada al crear es solo un punto de partida, no la fuente de verdad
+  // final (sección 6 del documento unificado).
   id_ubicacion           String
   // No está en el plantuml, pero las secciones 3 y 6 del documento unificado piden
   // registrar los productos solicitados al crear el domicilio.
@@ -72,7 +76,11 @@ model Domicilio {
   metodo_pago            String?
   estado                 String    @default("En_curso")
   distancia_km           Float?
-  espacio_baul           Int
+  // Nullable: cuando el Admin crea/asigna el domicilio, el espacio del baúl queda
+  // sin definir (estado "Asignado") — solo el domiciliario lo asigna al recogerlo
+  // físicamente, momento en que pasa a "En_curso". Cuando el domiciliario crea su
+  // propio domicilio, lo asigna de una vez y salta directo a "En_curso".
+  espacio_baul           Int?
   foto_productos_url     String?
   // No está en el plantuml, pero la sección 6 del documento unificado exige motivo
   // obligatorio al cancelar un domicilio.

@@ -4,6 +4,8 @@ import { toErrorResponse } from "../../../lib/service-error";
 import {
   listActivos,
   listActivosTodos,
+  listAsignados,
+  listAsignadosTodos,
   listHistorial,
   crearDomicilio,
 } from "../../../modules/domicilios/logic/domicilios.service";
@@ -18,6 +20,14 @@ export async function GET(request) {
       return NextResponse.json(telefono ? await listActivos(telefono) : await listActivosTodos());
     }
     return NextResponse.json(await listActivos(session.telefono));
+  }
+
+  if (sp.get("vista") === "asignados") {
+    if (session.rol === "Admin") {
+      const telefono = sp.get("telefono");
+      return NextResponse.json(telefono ? await listAsignados(telefono) : await listAsignadosTodos());
+    }
+    return NextResponse.json(await listAsignados(session.telefono));
   }
 
   const telefonoDomiciliario =
@@ -45,7 +55,9 @@ export async function POST(request) {
     session.rol === "Domiciliario" ? session.telefono : body?.telefono_domiciliario;
 
   try {
-    const domicilio = await crearDomicilio(telefonoDomiciliario, body ?? {});
+    const domicilio = await crearDomicilio(telefonoDomiciliario, body ?? {}, {
+      creadoPorAdmin: session.rol === "Admin",
+    });
     return NextResponse.json(domicilio, { status: 201 });
   } catch (err) {
     return toErrorResponse(err);
