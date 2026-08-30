@@ -1,56 +1,68 @@
 "use client";
 
+import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Package, Banknote, Save } from "lucide-react";
+import { Truck, Phone, Save } from "lucide-react";
 import MySwal from "../../../lib/swal";
 
-// Solo para el Admin: corrige el texto de productos y el precio de un domicilio
-// YA creado, en cualquier estado. Edita directo el texto de despliegue
-// (domicilio.productos) — no las líneas estructuradas del catálogo que se
-// eligieron al crearlo (esas se usan para inventario/ventas, ver módulo
-// Inventario), así que un cambio acá no ajusta el inventario.
-function EditarFormContent({ domicilio, onSaved }) {
+// Crear/editar un proveedor — es a quien se le compra un lote de producto
+// (ver LoteFormModal.js), el teléfono es opcional.
+function ProveedorFormContent({ proveedor, onSaved }) {
+  const isEdit = Boolean(proveedor);
+  const [serverError, setServerError] = useState(null);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm({
-    defaultValues: { productos: domicilio.productos, precio: domicilio.precio },
+    defaultValues: { nombre: proveedor?.nombre ?? "", telefono: proveedor?.telefono ?? "" },
   });
 
-  function onSubmit(values) {
-    onSaved({ productos: values.productos, precio: Number(values.precio) });
+  async function onSubmit(values) {
+    setServerError(null);
+    const url = isEdit ? `/api/proveedores/${proveedor.id_proveedor}` : "/api/proveedores";
+    const method = isEdit ? "PATCH" : "POST";
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(values),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setServerError(data.error ?? "No se pudo guardar el proveedor");
+      return;
+    }
+
+    onSaved(data);
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 text-left">
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          <Package size={14} />
-          Productos
+          <Truck size={14} />
+          Nombre
         </label>
-        <textarea
-          rows={2}
+        <input
           className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-          {...register("productos", { required: "Obligatorio" })}
+          {...register("nombre", { required: "El nombre es obligatorio" })}
         />
-        {errors.productos && <p className="mt-1 text-xs text-red-500">{errors.productos.message}</p>}
+        {errors.nombre && <p className="mt-1 text-xs text-red-500">{errors.nombre.message}</p>}
       </div>
 
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          <Banknote size={14} />
-          Precio (valor del pedido)
+          <Phone size={14} />
+          Teléfono (opcional)
         </label>
         <input
-          type="number"
-          min="1"
-          step="any"
           className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-          {...register("precio", { required: "Obligatorio", min: { value: 1, message: "Debe ser mayor a 0" } })}
+          {...register("telefono")}
         />
-        {errors.precio && <p className="mt-1 text-xs text-red-500">{errors.precio.message}</p>}
       </div>
+
+      {serverError && <p className="text-sm text-red-500">{serverError}</p>}
 
       <div className="mt-2 flex justify-end gap-2">
         <button
@@ -66,21 +78,21 @@ function EditarFormContent({ domicilio, onSaved }) {
           className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           <Save size={15} />
-          Guardar cambios
+          Guardar
         </button>
       </div>
     </form>
   );
 }
 
-export function openEditarDomicilioModal(domicilio) {
+export function openProveedorFormModal(proveedor = null) {
   return new Promise((resolve) => {
     let resolved = false;
     MySwal.fire({
-      title: "Corregir domicilio",
+      title: proveedor ? "Editar proveedor" : "Nuevo proveedor",
       html: (
-        <EditarFormContent
-          domicilio={domicilio}
+        <ProveedorFormContent
+          proveedor={proveedor}
           onSaved={(data) => {
             resolved = true;
             resolve(data);

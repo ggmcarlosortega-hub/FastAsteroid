@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Swal from "sweetalert2";
+import Swal from "../../../lib/swal";
+import { useRealtime } from "../../../lib/useRealtime";
 import { openEditarDomicilioModal } from "../components/EditarDomicilioModal";
 
 export function useDomicilioDetalle(id) {
@@ -25,6 +26,8 @@ export function useDomicilioDetalle(id) {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useRealtime("domicilios:changed", cargar);
 
   async function handleEditar() {
     const valores = await openEditarDomicilioModal(domicilio);

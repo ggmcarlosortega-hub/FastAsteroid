@@ -1,9 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import Swal from "sweetalert2";
+import Swal from "../lib/swal";
 import { Rocket, LogOut } from "lucide-react";
 
+// Más simple que AdminHeader.js a propósito: el domiciliario solo tiene una
+// pantalla (Mis domicilios), así que no hace falta menú de navegación.
 export default function DomiciliarioHeader({ nombre }) {
   const router = useRouter();
 

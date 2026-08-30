@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Swal from "sweetalert2";
-import { Rocket, Users, Bike, LayoutDashboard, LogOut } from "lucide-react";
+import Swal from "../lib/swal";
+import { Rocket, Users, Bike, LayoutDashboard, LogOut, Boxes, IdCard } from "lucide-react";
 
 export default function AdminHeader({ nombre }) {
   const router = useRouter();
@@ -26,6 +26,8 @@ export default function AdminHeader({ nombre }) {
 
   return (
     <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+      {/* Logo + menú de navegación del Admin — agregar un link nuevo acá si se
+          crea otra sección del panel (mismo patrón: icono + texto). */}
       <div className="flex items-center gap-6">
         <Link href="/admin" className="flex items-center gap-2 font-semibold text-zinc-900 dark:text-zinc-50">
           <Rocket size={18} className="text-orange-500" />
@@ -43,6 +45,14 @@ export default function AdminHeader({ nombre }) {
           <Link href="/admin/domicilios" className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
             <Bike size={15} />
             Domicilios
+          </Link>
+          <Link href="/admin/inventario" className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
+            <Boxes size={15} />
+            Inventario
+          </Link>
+          <Link href="/admin/domiciliarios" className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
+            <IdCard size={15} />
+            Domiciliarios
           </Link>
         </nav>
       </div>

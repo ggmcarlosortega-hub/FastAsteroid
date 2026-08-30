@@ -54,6 +54,9 @@ export default function ClienteDetallePage() {
         </span>
       </div>
 
+      {/* Sección de ubicaciones guardadas del cliente — esta es la lista de la
+          que se elige al crear un domicilio (ver UbicacionStepContent en
+          NuevoDomicilioModal.js). */}
       <div className="mt-8 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <MapPin size={16} />

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Swal from "sweetalert2";
+import Swal from "../../../lib/swal";
+import { useRealtime } from "../../../lib/useRealtime";
 import { openClienteFormModal } from "../components/ClienteFormModal";
 
 export function useClientesList() {
@@ -21,6 +22,8 @@ export function useClientesList() {
     const timeout = setTimeout(() => cargar(q), 300);
     return () => clearTimeout(timeout);
   }, [q, cargar]);
+
+  useRealtime("clientes:changed", () => cargar(q));
 
   async function handleNuevo() {
     const creado = await openClienteFormModal();

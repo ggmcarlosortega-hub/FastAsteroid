@@ -28,6 +28,8 @@ export default function ClientesPage() {
         </button>
       </div>
 
+      {/* Barra de búsqueda por nombre o teléfono — filtra en vivo (ver
+          useClientesList.js, espera 300ms después de dejar de escribir). */}
       <div className="mt-6 flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900">
         <Search size={16} className="text-zinc-400" />
         <input
@@ -38,6 +40,8 @@ export default function ClientesPage() {
         />
       </div>
 
+      {/* Lista de clientes — cada fila tiene: link al detalle (nombre + tel +
+          conteo de ubicaciones/domicilios), y botones editar/eliminar/entrar. */}
       <div className="mt-4 divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
         {loading && (
           <p className="p-6 text-center text-sm text-zinc-400">Cargando...</p>

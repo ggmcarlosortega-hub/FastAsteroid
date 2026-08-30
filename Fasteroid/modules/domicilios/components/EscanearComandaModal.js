@@ -1,18 +1,14 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
-import Swal from "sweetalert2";
-import withReactContent from "sweetalert2-react-content";
 import {
   Camera,
   ImageUp,
   Phone,
   User,
   MapPin,
-  Package,
   Banknote,
-  Box,
   Save,
   ArrowLeft,
   Loader2,
@@ -21,10 +17,11 @@ import {
 import { parseComandaText } from "../logic/comandaParser";
 import { getCurrentPositionAsync } from "../logic/geolocation";
 import { comprimirImagen, rotarImagen } from "../logic/imagenUtil";
-
-const MySwal = withReactContent(Swal);
+import EspacioBaulSelector from "./EspacioBaulSelector";
+import SeleccionProductosPicker from "../../inventario/components/SeleccionProductosPicker";
+import { sumaLineas } from "../../inventario/logic/lineasProductos";
+import MySwal from "../../../lib/swal";
 const VOLVER = Symbol("volver");
-const ESPACIOS_VALIDOS = [1, 2, 3];
 
 // Mismo patrón que NuevoDomicilioModal.js: cada paso es su propio Swal.fire
 // independiente, encadenado desde la función async orquestadora — SweetAlert2
@@ -228,25 +225,92 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
     register,
     handleSubmit,
     watch,
-    formState: { errors, isSubmitting },
+    setValue,
+    formState: { errors },
   } = useForm({
     defaultValues: {
       telefono: valoresIniciales.telefono ?? "",
       nombre: valoresIniciales.nombre ?? "",
       referencia: valoresIniciales.referencia ?? "",
-      productos: valoresIniciales.productos ?? "",
-      precio: valoresIniciales.precio ?? "",
     },
   });
   const telefonoActual = watch("telefono");
 
+  // Autocompletar por teléfono: si el número (leído por OCR o corregido a mano)
+  // ya coincide con un cliente guardado, se rellenan nombre y referencia solos —
+  // también sirve de red de seguridad para errores de OCR en el teléfono, porque
+  // si al corregirlo aparece un cliente real se nota al toque. Mismo patrón de
+  // debounce que ClienteStepContent en NuevoDomicilioModal.js.
+  const [clienteEncontrado, setClienteEncontrado] = useState(false);
+  useEffect(() => {
+    setClienteEncontrado(false);
+    if (!/^\d{10}$/.test(telefonoActual ?? "")) return;
+    const timeout = setTimeout(async () => {
+      const res = await fetch(`/api/clientes/${telefonoActual}`);
+      if (!res.ok) return;
+      const cliente = await res.json();
+      setValue("nombre", cliente.nombre);
+      if (cliente.ubicaciones?.[0]) {
+        setValue("referencia", cliente.ubicaciones[0].alias_direccion);
+      }
+      setClienteEncontrado(true);
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [telefonoActual, setValue]);
+
+  // El OCR solo lee texto de la foto — no es confiable mapear eso a un producto
+  // exacto del catálogo, así que acá siempre se elige a mano (igual que en "Nuevo
+  // domicilio"), aunque el resto de los campos sí vengan pre-llenados por el OCR.
+  const [lineas, setLineas] = useState([]);
+  const [lineasError, setLineasError] = useState(null);
+  // El precio que lee el OCR (de la línea TOTAL de la comanda) es solo un punto de
+  // partida ANTES de elegir productos — precioTocado arranca en false siempre
+  // (nunca en true por venir del OCR), porque si no, en cuanto el domiciliario
+  // elige productos del catálogo el precio se queda pegado al de la comanda y
+  // puede no coincidir con lo que realmente se está cobrando (bug real: el total
+  // leído por OCR y la suma de productos elegidos son cosas distintas).
+  const [precio, setPrecio] = useState(valoresIniciales.precio ? String(valoresIniciales.precio) : "");
+  const [precioTocado, setPrecioTocado] = useState(false);
+  const [precioError, setPrecioError] = useState(null);
+
+  function handleLineasChange(nuevasLineas) {
+    setLineas(nuevasLineas);
+    setLineasError(null);
+    if (!precioTocado) {
+      const sugerido = sumaLineas(nuevasLineas);
+      setPrecio(sugerido > 0 ? String(sugerido) : "");
+    }
+  }
+
+  function onSubmit(values) {
+    let valido = true;
+    if (lineas.length === 0) {
+      setLineasError("Elige al menos un producto");
+      valido = false;
+    }
+    const precioNum = Number(precio);
+    if (!Number.isFinite(precioNum) || precioNum <= 0) {
+      setPrecioError("Debe ser mayor a 0");
+      valido = false;
+    }
+    if (!valido) return;
+
+    onConfirmar({
+      ...values,
+      productos_lineas: lineas.map((l) => ({ id_producto: l.id_producto, cantidad: l.cantidad })),
+      precio: precioNum,
+    });
+  }
+
   return (
-    <form onSubmit={handleSubmit(onConfirmar)} className="flex flex-col gap-4 text-left">
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 text-left">
       <p className="text-xs text-amber-600 dark:text-amber-400">
         La lectura automática puede fallar, sobre todo con el teléfono — revisa cada campo antes
         de continuar.
       </p>
 
+      {/* Teléfono leído por el OCR — con botón de llamada directa (tel:) al lado,
+          para poder confirmar con el cliente si el número se ve dudoso. */}
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <Phone size={14} />
@@ -268,6 +332,12 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
           )}
         </div>
         {errors.telefono && <p className="mt-1 text-xs text-red-500">{errors.telefono.message}</p>}
+        {clienteEncontrado && (
+          <p className="mt-1 flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+            <User size={12} />
+            Cliente ya registrado — nombre y referencia autocompletados
+          </p>
+        )}
       </div>
 
       <div>
@@ -296,19 +366,11 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
         )}
       </div>
 
-      <div>
-        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          <Package size={14} />
-          Productos
-        </label>
-        <textarea
-          rows={2}
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-          {...register("productos", { required: "Obligatorio" })}
-        />
-        {errors.productos && <p className="mt-1 text-xs text-red-500">{errors.productos.message}</p>}
-      </div>
+      {/* El OCR no elige productos del catálogo por sí solo — se escogen a mano
+          acá, igual que en "Nuevo domicilio" (ver comentario más arriba). */}
+      <SeleccionProductosPicker value={lineas} onChange={handleLineasChange} error={lineasError} />
 
+      {/* Precio autocalculado al elegir productos, editable si se negoció otro. */}
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <Banknote size={14} />
@@ -318,10 +380,15 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
           type="number"
           min="1"
           step="any"
+          value={precio}
+          onChange={(e) => {
+            setPrecio(e.target.value);
+            setPrecioTocado(true);
+            setPrecioError(null);
+          }}
           className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-          {...register("precio", { required: "Obligatorio", min: { value: 1, message: "Debe ser mayor a 0" } })}
         />
-        {errors.precio && <p className="mt-1 text-xs text-red-500">{errors.precio.message}</p>}
+        {precioError && <p className="mt-1 text-xs text-red-500">{precioError}</p>}
       </div>
 
       <div className="mt-2 flex justify-between gap-2">
@@ -335,8 +402,7 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           <Save size={15} />
           Continuar
@@ -384,6 +450,9 @@ function UbicacionesStepContent({ cliente, referenciaComanda, onBack, onSelect }
       <p className="mb-2 text-sm text-zinc-500 dark:text-zinc-400">
         <strong>{cliente.nombre}</strong> ya tiene ubicaciones guardadas.
       </p>
+      {/* Direcciones ya guardadas del cliente — si ninguna sirve, el botón de
+          abajo ("Es una dirección nueva") crea una con la referencia leída de
+          la comanda y la posición GPS actual del domiciliario. */}
       <div className="max-h-56 divide-y divide-zinc-200 overflow-y-auto rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
         {cliente.ubicaciones.map((u) => (
           <button
@@ -517,38 +586,29 @@ async function resolverClienteYUbicacion(datos) {
 // --- Paso final: espacio del baúl (la foto ya se tiene, no se vuelve a pedir) ---
 
 function EspacioStepContent({ espaciosOcupados, onBack, onSubmit }) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm({ defaultValues: { espacio_baul: "" } });
-  const espaciosLibres = ESPACIOS_VALIDOS.filter((e) => !espaciosOcupados.includes(e));
+  const [espacio, setEspacio] = useState(null);
+  const [error, setError] = useState(null);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!espacio) {
+      setError("Obligatorio");
+      return;
+    }
+    onSubmit({ espacio_baul: espacio });
+  }
 
   return (
-    <form
-      onSubmit={handleSubmit((v) => onSubmit({ espacio_baul: Number(v.espacio_baul) }))}
-      className="flex flex-col gap-4 text-left"
-    >
-      <div>
-        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          <Box size={14} />
-          Espacio del baúl
-        </label>
-        <select
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-          {...register("espacio_baul", { required: "Obligatorio" })}
-        >
-          <option value="">Selecciona un espacio libre</option>
-          {espaciosLibres.map((e) => (
-            <option key={e} value={e}>
-              Espacio {e}
-            </option>
-          ))}
-        </select>
-        {errors.espacio_baul && (
-          <p className="mt-1 text-xs text-red-500">{errors.espacio_baul.message}</p>
-        )}
-      </div>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 text-left">
+      <EspacioBaulSelector
+        espaciosOcupados={espaciosOcupados}
+        value={espacio}
+        onChange={(e) => {
+          setEspacio(e);
+          setError(null);
+        }}
+        error={error}
+      />
 
       <div className="mt-2 flex justify-between gap-2">
         <button
@@ -561,8 +621,7 @@ function EspacioStepContent({ espaciosOcupados, onBack, onSubmit }) {
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           <Save size={15} />
           Registrar domicilio
@@ -604,7 +663,7 @@ function openEspacioStep(espaciosOcupados) {
 
 // --- Orquestador ---
 
-export async function openEscanearComandaModal(espaciosOcupados) {
+export async function openEscanearComandaModal(espaciosOcupados, ubicacionRecogida) {
   let datosOCR = null;
   let clienteUbicacion = null;
   let paso = "captura";
@@ -639,7 +698,7 @@ export async function openEscanearComandaModal(espaciosOcupados) {
         }
         clienteUbicacion = resultado;
       } catch (err) {
-        await Swal.fire({ icon: "error", title: "No se pudo continuar", text: err.message });
+        await MySwal.fire({ icon: "error", title: "No se pudo continuar", text: err.message });
         paso = "revision";
         continue;
       }
@@ -661,7 +720,8 @@ export async function openEscanearComandaModal(espaciosOcupados) {
       body: JSON.stringify({
         telefono_cliente: clienteUbicacion.telefono_cliente,
         id_ubicacion: clienteUbicacion.ubicacion.id_ubicacion,
-        productos: datosOCR.productos,
+        ubicacion_recogida: ubicacionRecogida,
+        productos_lineas: datosOCR.productos_lineas,
         precio: Number(datosOCR.precio),
         espacio_baul: resultado.espacio_baul,
         foto_productos_url: datosOCR.foto,
@@ -670,7 +730,7 @@ export async function openEscanearComandaModal(espaciosOcupados) {
     const data = await res.json();
 
     if (!res.ok) {
-      await Swal.fire({ icon: "error", title: "No se pudo crear el domicilio", text: data.error });
+      await MySwal.fire({ icon: "error", title: "No se pudo crear el domicilio", text: data.error });
       paso = "espacio";
       continue;
     }

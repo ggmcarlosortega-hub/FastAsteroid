@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Swal from "sweetalert2";
+import Swal from "../../../lib/swal";
+import { useRealtime } from "../../../lib/useRealtime";
 import { openUbicacionFormModal } from "../components/UbicacionFormModal";
 
 export function useClienteDetalle(telefono) {
@@ -23,6 +24,8 @@ export function useClienteDetalle(telefono) {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useRealtime("clientes:changed", cargar);
 
   async function handleAgregarUbicacion() {
     const creada = await openUbicacionFormModal(telefono);

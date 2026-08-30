@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Swal from "sweetalert2";
+import Swal from "../../../lib/swal";
+import { useRealtime } from "../../../lib/useRealtime";
 import { openNuevoDomicilioModalAdmin } from "../components/NuevoDomicilioModal";
 
 function inicioDe(periodo) {
@@ -41,6 +42,8 @@ export function useDomiciliosAdmin() {
     cargar(periodo);
   }, [periodo, cargar]);
 
+  useRealtime("domicilios:changed", () => cargar(periodo));
+
   async function handleNuevo() {
     const creado = await openNuevoDomicilioModalAdmin();
     if (!creado) return;
@@ -62,5 +65,49 @@ export function useDomiciliosAdmin() {
     .filter((d) => d.estado === "Cancelado")
     .reduce((suma, d) => suma + (d.precio ?? 0), 0);
 
-  return { activos, asignados, historial, periodo, setPeriodo, loading, handleNuevo, ganancias, perdidas };
+  const entregados = historial.filter((d) => d.estado === "Entregado");
+
+  // Desglose efectivo/transferencia de TODO el período, para el
+  // <DesglosePago> general junto a GananciasPerdidas.
+  const desglosePago = entregados.reduce(
+    (acc, d) => {
+      acc.efectivo += d.valor_efectivo ?? 0;
+      acc.transferencia += d.valor_transferencia ?? 0;
+      return acc;
+    },
+    { efectivo: 0, transferencia: 0 }
+  );
+
+  // Lo mismo pero agrupado por domiciliario — sección "Recaudado por
+  // domiciliario" debajo del desglose general.
+  const desglosePorDomiciliarioMap = new Map();
+  for (const d of entregados) {
+    const key = d.domiciliario.telefono;
+    const actual = desglosePorDomiciliarioMap.get(key) ?? {
+      telefono: key,
+      nombre: d.domiciliario.nombre,
+      efectivo: 0,
+      transferencia: 0,
+    };
+    actual.efectivo += d.valor_efectivo ?? 0;
+    actual.transferencia += d.valor_transferencia ?? 0;
+    desglosePorDomiciliarioMap.set(key, actual);
+  }
+  const desglosePorDomiciliario = [...desglosePorDomiciliarioMap.values()].sort((a, b) =>
+    a.nombre.localeCompare(b.nombre)
+  );
+
+  return {
+    activos,
+    asignados,
+    historial,
+    periodo,
+    setPeriodo,
+    loading,
+    handleNuevo,
+    ganancias,
+    perdidas,
+    desglosePago,
+    desglosePorDomiciliario,
+  };
 }

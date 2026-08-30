@@ -38,6 +38,8 @@ export default function GananciasPerdidas({ ganancias, perdidas }) {
           Neto del período
         </p>
       </div>
+      {/* Número grande arriba: neto (ganancias - pérdidas), verde si es positivo,
+          rojo si es negativo. */}
       <p
         className={`mt-1 text-4xl font-semibold ${
           esPositivo ? "text-green-700 dark:text-green-500" : "text-red-700 dark:text-red-500"
@@ -47,6 +49,7 @@ export default function GananciasPerdidas({ ganancias, perdidas }) {
         {formatoCOP(Math.abs(neto))}
       </p>
 
+      {/* Dos barras comparativas debajo: ganancias vs. pérdidas del período. */}
       <div className="mt-5 flex flex-col gap-4">
         <Barra
           label="Ganancias (entregados)"

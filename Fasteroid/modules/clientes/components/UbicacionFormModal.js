@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import Swal from "sweetalert2";
-import withReactContent from "sweetalert2-react-content";
 import { MapPin, Navigation, Save } from "lucide-react";
+import MySwal from "../../../lib/swal";
 
-const MySwal = withReactContent(Swal);
-
+// Se abre desde el detalle de un cliente (botón "Agregar" en Ubicaciones). Pide
+// coordenadas a mano — a diferencia del flujo de escaneo de comanda, acá no
+// hay captura de GPS automática, se escriben directamente.
 function UbicacionFormContent({ telefonoCliente, onSaved }) {
   const [serverError, setServerError] = useState(null);
   const {

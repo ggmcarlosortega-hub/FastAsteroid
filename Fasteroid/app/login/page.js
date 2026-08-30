@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useForm } from "react-hook-form";
-import Swal from "sweetalert2";
+import Swal from "../../lib/swal";
 import {
   Phone,
   Lock,

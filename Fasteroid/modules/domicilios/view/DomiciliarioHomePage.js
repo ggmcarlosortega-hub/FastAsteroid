@@ -21,6 +21,8 @@ import {
 import { useDomiciliosActivos } from "../logic/useDomiciliosActivos";
 import { useHistorial } from "../logic/useHistorial";
 import { googleMapsUrl } from "../logic/googleMapsUrl";
+import { ESPACIOS_VALIDOS } from "../components/EspacioBaulSelector";
+import DesglosePago from "../components/DesglosePago";
 
 const ESTADO_BADGE = {
   Entregado: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
@@ -31,7 +33,6 @@ export default function DomiciliarioHomePage() {
   const {
     activos,
     asignados,
-    distancias,
     loading,
     handleNuevo,
     handleEscanear,
@@ -45,13 +46,15 @@ export default function DomiciliarioHomePage() {
 
   return (
     <div>
+      {/* Encabezado: título, contador "X/9 en curso", y los dos botones para
+          empezar un domicilio nuevo (manual o escaneando la comanda). */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
             Mis domicilios
           </h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            {activos.length}/3 en curso
+            {activos.length}/{ESPACIOS_VALIDOS.length} en curso
           </p>
         </div>
         <div className="flex gap-2">
@@ -72,6 +75,9 @@ export default function DomiciliarioHomePage() {
         </div>
       </div>
 
+      {/* Sección "asignados": domicilios que el Admin le mandó a este
+          domiciliario pero que todavía no recoge (sin espacio de baúl). Solo
+          aparece si hay al menos uno. */}
       {asignados.length > 0 && (
         <div className="mt-6">
           <h2 className="flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -128,6 +134,9 @@ export default function DomiciliarioHomePage() {
         </div>
       )}
 
+      {/* Sección "activos": domicilios que el domiciliario ya recogió y tiene en
+          curso ahora mismo — cada tarjeta muestra cliente, dirección, productos,
+          km recorridos, llamar/Maps, y los botones Entregado/Cancelar. */}
       <div className="mt-4 flex flex-col gap-3">
         {!loading && activos.length === 0 && asignados.length === 0 && (
           <p className="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-400 dark:border-zinc-700">
@@ -160,29 +169,27 @@ export default function DomiciliarioHomePage() {
               {domicilio.productos}
             </p>
 
-            <div className="mt-2 flex items-center justify-between text-xs text-zinc-400">
-              <span className="flex items-center gap-1.5">
-                <Navigation size={12} />
-                {(distancias[domicilio.id_domicilio] ?? 0).toFixed(2)} km recorridos
-              </span>
-              <div className="flex items-center gap-3">
-                <a
-                  href={`tel:${domicilio.cliente.telefono}`}
-                  className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
-                >
-                  <Phone size={12} />
-                  Llamar
-                </a>
-                <a
-                  href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
-                >
-                  <Map size={12} />
-                  Ver en Maps
-                </a>
-              </div>
+            {/* La distancia recorrida ya no se muestra en vivo acá (antes venía de
+                un tracking con watchPosition poco confiable) — se calcula solo al
+                entregar, entre el punto de partida y el de llegada, y se ve en el
+                detalle del domicilio una vez entregado. */}
+            <div className="mt-2 flex items-center gap-3 text-xs text-zinc-400">
+              <a
+                href={`tel:${domicilio.cliente.telefono}`}
+                className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
+              >
+                <Phone size={12} />
+                Llamar
+              </a>
+              <a
+                href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
+              >
+                <Map size={12} />
+                Ver en Maps
+              </a>
             </div>
 
             <div className="mt-3 flex gap-2">
@@ -205,6 +212,9 @@ export default function DomiciliarioHomePage() {
         ))}
       </div>
 
+      {/* Sección "historial de hoy": tarjetas de resumen (entregados, cancelados,
+          recaudado, km) más la lista de domicilios ya cerrados hoy. Siempre es
+          del día — el domiciliario no puede ver semana/mes (eso es solo Admin). */}
       <div className="mt-10">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Historial de hoy</h2>
@@ -218,6 +228,16 @@ export default function DomiciliarioHomePage() {
           <ResumenTile icon={XCircle} label="Cancelados" value={resumen.cancelados} />
           <ResumenTile icon={Wallet} label="Recaudado" value={`$${resumen.recaudado.toLocaleString("es-CO")}`} />
           <ResumenTile icon={Navigation} label="Km" value={resumen.km.toFixed(1)} />
+        </div>
+
+        {/* Barra de progreso efectivo vs. transferencia del día — mismo
+            componente que usa el Admin, ver DesglosePago.js. */}
+        <div className="mt-3">
+          <DesglosePago
+            efectivo={resumen.efectivoTotal}
+            transferencia={resumen.transferenciaTotal}
+            titulo="Efectivo vs. transferencia hoy"
+          />
         </div>
 
         <div className="mt-3 divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">

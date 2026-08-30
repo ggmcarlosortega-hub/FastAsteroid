@@ -1,10 +1,20 @@
 "use client";
 
+import { useEffect } from "react";
 import DomiciliarioHeader from "../../components/DomiciliarioHeader";
 import { useSesion } from "../../lib/useSesion";
+import socket from "../../lib/socket";
 
 export default function DomiciliarioLayout({ children }) {
   const { session, loading } = useSesion("Domiciliario");
+
+  // Conecta el socket de tiempo real solo mientras hay sesión — evita
+  // reintentos inútiles antes de loguearse (ver lib/socket.js).
+  useEffect(() => {
+    if (!session) return;
+    socket?.connect();
+    return () => socket?.disconnect();
+  }, [session]);
 
   if (loading || !session) {
     return null;

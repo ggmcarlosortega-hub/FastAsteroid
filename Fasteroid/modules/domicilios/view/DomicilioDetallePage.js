@@ -26,6 +26,8 @@ const ESTADO_BADGE = {
   Cancelado: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
 };
 
+// Una fila "ícono + etiqueta + valor" reutilizada para cada dato del domicilio
+// de más abajo (teléfono, ubicación, productos, precio, etc.)
 function Dato({ icon: Icon, label, children }) {
   return (
     <div className="flex items-start gap-2.5">
@@ -74,6 +76,8 @@ export default function DomicilioDetallePage() {
         Volver
       </button>
 
+      {/* Título (nombre del cliente) + badge de estado + botón Editar (solo
+          visible para el Admin, ver esAdmin arriba). */}
       <div className="flex items-start justify-between">
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
           {domicilio.cliente.nombre}
@@ -103,6 +107,10 @@ export default function DomicilioDetallePage() {
         />
       )}
 
+      {/* Grilla con todos los datos del domicilio (2 columnas en pantallas
+          anchas) — cada fila es un componente Dato de arriba; las últimas 4
+          filas son condicionales y solo aparecen según el estado (entregado,
+          cancelado, etc.). */}
       <div className="mt-6 grid grid-cols-1 gap-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 sm:grid-cols-2">
         <div className="flex items-center justify-between">
           <Dato icon={Phone} label="Teléfono del cliente">
@@ -110,7 +118,7 @@ export default function DomicilioDetallePage() {
           </Dato>
           <a
             href={`tel:${domicilio.cliente.telefono}`}
-            className="flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            className="flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-800 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             <Phone size={13} />
             Llamar

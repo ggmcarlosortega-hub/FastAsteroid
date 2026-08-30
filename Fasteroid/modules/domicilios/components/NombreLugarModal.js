@@ -1,12 +1,12 @@
 "use client";
 
 import { useForm } from "react-hook-form";
-import Swal from "sweetalert2";
-import withReactContent from "sweetalert2-react-content";
 import { MapPin, Save } from "lucide-react";
+import MySwal from "../../../lib/swal";
 
-const MySwal = withReactContent(Swal);
-
+// Se abre solo cuando, al entregar, el GPS real no coincide con ninguna
+// dirección guardada del cliente — pide un nombre para esa ubicación nueva
+// antes de reemplazar/crear el registro (ver handleEntregar).
 function NombreLugarFormContent({ onSaved }) {
   const {
     register,

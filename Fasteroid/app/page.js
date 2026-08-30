@@ -65,6 +65,9 @@ export default async function Home() {
           </div>
         )}
 
+        {/* Tarjetas de conteo (usuarios/clientes/ubicaciones/domicilios) — solo
+            demuestran que la base de datos responde, no son datos de negocio
+            reales para nadie que no sea desarrollador. */}
         <div className="mt-10 grid w-full grid-cols-2 gap-4 sm:grid-cols-4">
           {stats.map(({ label, value, icon: Icon }) => (
             <div

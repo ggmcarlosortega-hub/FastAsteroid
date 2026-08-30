@@ -1,23 +1,22 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import Swal from "sweetalert2";
-import { haversineKm } from "./haversine";
+import { useState, useEffect, useCallback } from "react";
+import Swal from "../../../lib/swal";
+import { useRealtime } from "../../../lib/useRealtime";
 import { getCurrentPositionAsync } from "./geolocation";
 import { openNuevoDomicilioModal } from "../components/NuevoDomicilioModal";
 import { openEscanearComandaModal } from "../components/EscanearComandaModal";
 import { openEntregarModal } from "../components/EntregarModal";
 import { openNombreLugarModal } from "../components/NombreLugarModal";
 import { openRecogerModal } from "../components/RecogerModal";
+import { ESPACIOS_VALIDOS } from "../components/EspacioBaulSelector";
+
+const MAX_ACTIVOS = ESPACIOS_VALIDOS.length;
 
 export function useDomiciliosActivos() {
   const [activos, setActivos] = useState([]);
   const [asignados, setAsignados] = useState([]);
-  const [distancias, setDistancias] = useState({});
   const [loading, setLoading] = useState(true);
-  const activosRef = useRef([]);
-  const posicionAnteriorRef = useRef(null);
-  const watchIdRef = useRef(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -34,71 +33,40 @@ export function useDomiciliosActivos() {
     cargar();
   }, [cargar]);
 
-  useEffect(() => {
-    activosRef.current = activos;
-    setDistancias((prev) => {
-      const next = {};
-      for (const d of activos) next[d.id_domicilio] = prev[d.id_domicilio] ?? 0;
-      return next;
-    });
-  }, [activos]);
-
-  // Mientras haya al menos un domicilio en curso, sigue la ubicación en segundo
-  // plano y acumula distancia con Haversine entre lecturas (sección 8 del documento).
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return;
-
-    if (activos.length === 0) {
-      if (watchIdRef.current != null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-        posicionAnteriorRef.current = null;
-      }
-      return;
-    }
-
-    if (watchIdRef.current != null) return;
-
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        const nueva = { latitud: pos.coords.latitude, longitud: pos.coords.longitude };
-        const anterior = posicionAnteriorRef.current;
-        if (anterior) {
-          const delta = haversineKm(anterior, nueva);
-          setDistancias((prev) => {
-            const next = { ...prev };
-            for (const d of activosRef.current) {
-              next[d.id_domicilio] = (next[d.id_domicilio] ?? 0) + delta;
-            }
-            return next;
-          });
-        }
-        posicionAnteriorRef.current = nueva;
-      },
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 5000 }
-    );
-
-    return () => {
-      if (watchIdRef.current != null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-    };
-  }, [activos.length]);
+  useRealtime("domicilios:changed", cargar);
 
   const espaciosOcupados = activos.map((d) => d.espacio_baul);
 
+  // Punto de partida para calcular distancia_km al entregar (ver
+  // marcarEntregado en el backend) — se captura ANTES de abrir cualquier modal
+  // que ponga un domicilio en curso (crear, escanear, recoger), igual que ya
+  // se hace con la ubicación de entrega en handleEntregar: si el GPS falla, se
+  // bloquea con un error claro antes de que el domiciliario llene el formulario.
+  async function capturarUbicacionRecogida() {
+    const ubicacion = await getCurrentPositionAsync();
+    if (!ubicacion) {
+      await Swal.fire({
+        icon: "error",
+        title: "No se pudo capturar tu ubicación",
+        text: "Activa el GPS/la ubicación del navegador e intenta de nuevo.",
+      });
+    }
+    return ubicacion;
+  }
+
   async function handleNuevo() {
-    if (activos.length >= 3) {
+    if (activos.length >= MAX_ACTIVOS) {
       await Swal.fire({
         icon: "info",
-        title: "Ya tienes 3 domicilios en curso",
+        title: `Ya tienes ${MAX_ACTIVOS} domicilios en curso`,
         text: "Marca alguno como entregado o cancelado antes de crear otro.",
       });
       return;
     }
-    const creado = await openNuevoDomicilioModal(espaciosOcupados);
+    const ubicacionRecogida = await capturarUbicacionRecogida();
+    if (!ubicacionRecogida) return;
+
+    const creado = await openNuevoDomicilioModal(espaciosOcupados, ubicacionRecogida);
     if (!creado) return;
     await Swal.fire({
       toast: true,
@@ -112,15 +80,18 @@ export function useDomiciliosActivos() {
   }
 
   async function handleEscanear() {
-    if (activos.length >= 3) {
+    if (activos.length >= MAX_ACTIVOS) {
       await Swal.fire({
         icon: "info",
-        title: "Ya tienes 3 domicilios en curso",
+        title: `Ya tienes ${MAX_ACTIVOS} domicilios en curso`,
         text: "Marca alguno como entregado o cancelado antes de crear otro.",
       });
       return;
     }
-    const creado = await openEscanearComandaModal(espaciosOcupados);
+    const ubicacionRecogida = await capturarUbicacionRecogida();
+    if (!ubicacionRecogida) return;
+
+    const creado = await openEscanearComandaModal(espaciosOcupados, ubicacionRecogida);
     if (!creado) return;
     await Swal.fire({
       toast: true,
@@ -149,12 +120,14 @@ export function useDomiciliosActivos() {
       return;
     }
 
-    const valores = await openEntregarModal(distancias[domicilio.id_domicilio], domicilio.precio);
+    const valores = await openEntregarModal(domicilio.precio);
     if (!valores) return;
 
+    // distancia_km ya no se manda — el backend la calcula solo con Haversine
+    // entre el punto de partida guardado al recoger/crear y esta ubicación de
+    // entrega (ver marcarEntregado).
     const payload = {
       ...valores,
-      distancia_km: distancias[domicilio.id_domicilio] ?? null,
       ubicacion_entrega: ubicacionEntrega,
     };
 
@@ -200,8 +173,11 @@ export function useDomiciliosActivos() {
   }
 
   async function handleRecoger(domicilio) {
+    const ubicacionRecogida = await capturarUbicacionRecogida();
+    if (!ubicacionRecogida) return;
+
     const espaciosOcupados = activos.map((d) => d.espacio_baul);
-    const valores = await openRecogerModal(espaciosOcupados);
+    const valores = await openRecogerModal(espaciosOcupados, ubicacionRecogida);
     if (!valores) return;
 
     const res = await fetch(`/api/domicilios/${domicilio.id_domicilio}/recoger`, {
@@ -268,7 +244,6 @@ export function useDomiciliosActivos() {
   return {
     activos,
     asignados,
-    distancias,
     loading,
     handleNuevo,
     handleEscanear,

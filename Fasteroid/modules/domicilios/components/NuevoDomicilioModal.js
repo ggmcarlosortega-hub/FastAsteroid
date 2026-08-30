@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import Swal from "sweetalert2";
-import withReactContent from "sweetalert2-react-content";
 import {
   Search,
   UserPlus,
@@ -12,15 +10,16 @@ import {
   MapPin,
   Plus,
   Navigation,
-  Package,
   Camera,
   Banknote,
   ArrowLeft,
   Save,
 } from "lucide-react";
 import { comprimirImagen } from "../logic/imagenUtil";
-
-const MySwal = withReactContent(Swal);
+import EspacioBaulSelector from "./EspacioBaulSelector";
+import SeleccionProductosPicker from "../../inventario/components/SeleccionProductosPicker";
+import { sumaLineas } from "../../inventario/logic/lineasProductos";
+import MySwal from "../../../lib/swal";
 
 // Cada paso del wizard es su PROPIO Swal.fire independiente, encadenado con
 // async/await en openNuevoDomicilioModal. SweetAlert2 puede re-renderizar el
@@ -30,6 +29,8 @@ const MySwal = withReactContent(Swal);
 // cliente/ubicación ya elegidos a mitad de camino. Encadenar modales separados
 // evita el problema por completo: el cliente y la ubicación seleccionados viven
 // como variables normales de la función async, no como estado de React.
+
+// --- Paso 1: buscar o crear el cliente ---
 
 function ClienteStepContent({ onSelect }) {
   const [q, setQ] = useState("");
@@ -115,17 +116,25 @@ function ClienteStepContent({ onSelect }) {
 
   return (
     <div className="text-left">
-      <div className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900">
+      {/* Barra de búsqueda: fondo blanco en claro, zinc-800 (oscuro) en modo oscuro
+          — igual patrón que el resto de la app, para que combine con el fondo del
+          modal en vez de quedar como una caja blanca suelta. */}
+      <div className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-800">
         <Search size={16} className="text-zinc-400" />
         <input
           autoFocus
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buscar por nombre o teléfono..."
-          className="w-full bg-transparent text-sm outline-none"
+          className="w-full bg-transparent text-sm outline-none dark:text-zinc-50"
         />
       </div>
 
+      {/* Lista de clientes encontrados — cada fila es un botón completo (toda el
+          área es clickeable, no solo el texto). Colores iguales a las demás listas
+          de la app (ClientesPage.js, EspacioBaulSelector.js, etc.): nombre en
+          negrita/claro, teléfono en gris tenue, resaltado sutil al tocar/pasar el
+          mouse (nunca azul — el acento de toda la app es naranja). */}
       <div className="mt-3 max-h-56 divide-y divide-zinc-200 overflow-y-auto rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
         {resultados.length === 0 && (
           <p className="p-4 text-center text-sm text-zinc-400">Sin resultados.</p>
@@ -142,6 +151,8 @@ function ClienteStepContent({ onSelect }) {
         ))}
       </div>
 
+      {/* Atajo para registrar un cliente que no aparece en la búsqueda — cambia
+          crearNuevo a true y este mismo paso muestra el formulario en su lugar. */}
       <button
         onClick={() => setCrearNuevo(true)}
         className="mt-3 flex items-center gap-1.5 text-sm text-orange-600 hover:text-orange-700"
@@ -176,6 +187,8 @@ function openClienteStep() {
     });
   });
 }
+
+// --- Paso 2: elegir o crear la ubicación de entrega ---
 
 function UbicacionStepContent({ cliente, onBack, onSelect }) {
   const [ubicaciones, setUbicaciones] = useState(null);
@@ -274,6 +287,9 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
     );
   }
 
+  // Paso "elegir ubicación": lista de direcciones ya guardadas del cliente. Si
+  // ninguna sirve, el botón "Nueva ubicación" de más abajo cambia crearNueva a
+  // true y este mismo return muestra el formulario de arriba en su lugar.
   return (
     <div className="text-left">
       <p className="mb-2 text-sm text-zinc-500 dark:text-zinc-400">
@@ -353,16 +369,30 @@ function openUbicacionStep(cliente) {
   });
 }
 
+// --- Paso 3: productos, precio, espacio del baúl y foto del pedido ---
+
 function DetalleStepContent({ espaciosOcupados, pedirEspacio, onBack, onSubmit, serverError }) {
+  const [lineas, setLineas] = useState([]);
+  const [lineasError, setLineasError] = useState(null);
+  const [precio, setPrecio] = useState("");
+  const [precioTocado, setPrecioTocado] = useState(false);
+  const [precioError, setPrecioError] = useState(null);
   const [foto, setFoto] = useState(null);
   const [fotoError, setFotoError] = useState(null);
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm({ defaultValues: { productos: "", precio: "", espacio_baul: "" } });
+  const [espacio, setEspacio] = useState(null);
+  const [espacioError, setEspacioError] = useState(null);
 
-  const espaciosLibres = pedirEspacio ? [1, 2, 3].filter((e) => !espaciosOcupados.includes(e)) : [];
+  // El precio se sugiere solo (suma cantidad × precio de cada producto elegido)
+  // mientras el domiciliario no lo haya tocado a mano — en cuanto lo edita, deja de
+  // recalcularse para no pisarle un precio negociado con el cliente.
+  function handleLineasChange(nuevasLineas) {
+    setLineas(nuevasLineas);
+    setLineasError(null);
+    if (!precioTocado) {
+      const sugerido = sumaLineas(nuevasLineas);
+      setPrecio(sugerido > 0 ? String(sugerido) : "");
+    }
+  }
 
   function handleFoto(e) {
     const file = e.target.files?.[0];
@@ -378,35 +408,44 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, onBack, onSubmit, 
     reader.readAsDataURL(file);
   }
 
-  function onFormSubmit(values) {
+  function onFormSubmit(e) {
+    e.preventDefault();
+    let valido = true;
+    if (lineas.length === 0) {
+      setLineasError("Elige al menos un producto");
+      valido = false;
+    }
+    const precioNum = Number(precio);
+    if (!Number.isFinite(precioNum) || precioNum <= 0) {
+      setPrecioError("Debe ser mayor a 0");
+      valido = false;
+    }
     if (!foto) {
       setFotoError("La foto del pedido es obligatoria");
-      return;
+      valido = false;
     }
+    if (pedirEspacio && !espacio) {
+      setEspacioError("Obligatorio");
+      valido = false;
+    }
+    if (!valido) return;
+
     onSubmit({
-      productos: values.productos,
-      precio: Number(values.precio),
-      ...(pedirEspacio ? { espacio_baul: Number(values.espacio_baul) } : {}),
+      productos_lineas: lineas.map((l) => ({ id_producto: l.id_producto, cantidad: l.cantidad })),
+      precio: precioNum,
+      ...(pedirEspacio ? { espacio_baul: espacio } : {}),
       foto_productos_url: foto,
     });
   }
 
   return (
-    <form onSubmit={handleSubmit(onFormSubmit)} className="flex flex-col gap-4 text-left">
-      <div>
-        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          <Package size={14} />
-          Productos
-        </label>
-        <textarea
-          rows={2}
-          placeholder="2 hamburguesas, 1 gaseosa..."
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-          {...register("productos", { required: "Obligatorio" })}
-        />
-        {errors.productos && <p className="mt-1 text-xs text-red-500">{errors.productos.message}</p>}
-      </div>
+    <form onSubmit={onFormSubmit} className="flex flex-col gap-4 text-left">
+      {/* Catálogo de productos con cantidad (+/-) — ver SeleccionProductosPicker.js */}
+      <SeleccionProductosPicker value={lineas} onChange={handleLineasChange} error={lineasError} />
 
+      {/* Precio total del pedido — se autocompleta al elegir productos (ver
+          handleLineasChange más arriba) pero se puede sobreescribir a mano si se
+          negoció un precio distinto con el cliente. */}
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <Banknote size={14} />
@@ -416,34 +455,34 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, onBack, onSubmit, 
           type="number"
           min="1"
           step="any"
+          value={precio}
+          onChange={(e) => {
+            setPrecio(e.target.value);
+            setPrecioTocado(true);
+            setPrecioError(null);
+          }}
           className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-          {...register("precio", { required: "Obligatorio", min: { value: 1, message: "Debe ser mayor a 0" } })}
         />
-        {errors.precio && <p className="mt-1 text-xs text-red-500">{errors.precio.message}</p>}
+        {precioError && <p className="mt-1 text-xs text-red-500">{precioError}</p>}
       </div>
 
+      {/* Grilla del espacio del baúl (ver EspacioBaulSelector.js) — solo aparece
+          cuando el que crea el domicilio es el propio domiciliario (pedirEspacio);
+          si lo crea el Admin, el espacio se elige después al recogerlo. */}
       {pedirEspacio && (
-        <div>
-          <label className="mb-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Espacio del baúl
-          </label>
-          <select
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-            {...register("espacio_baul", { required: "Obligatorio" })}
-          >
-            <option value="">Selecciona un espacio libre</option>
-            {espaciosLibres.map((e) => (
-              <option key={e} value={e}>
-                Espacio {e}
-              </option>
-            ))}
-          </select>
-          {errors.espacio_baul && (
-            <p className="mt-1 text-xs text-red-500">{errors.espacio_baul.message}</p>
-          )}
-        </div>
+        <EspacioBaulSelector
+          espaciosOcupados={espaciosOcupados}
+          value={espacio}
+          onChange={(e) => {
+            setEspacio(e);
+            setEspacioError(null);
+          }}
+          error={espacioError}
+        />
       )}
 
+      {/* Foto obligatoria del pedido — input nativo de cámara/galería, con
+          vista previa una vez elegida. */}
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <Camera size={14} />
@@ -476,8 +515,7 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, onBack, onSubmit, 
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           <Save size={15} />
           {pedirEspacio ? "Iniciar domicilio" : "Asignar domicilio"}
@@ -519,7 +557,7 @@ function openDetalleStep(espaciosOcupados, serverError, pedirEspacio = true) {
   });
 }
 
-export async function openNuevoDomicilioModal(espaciosOcupados) {
+export async function openNuevoDomicilioModal(espaciosOcupados, ubicacionRecogida) {
   let cliente = null;
   let ubicacion = null;
   let detalleError = null;
@@ -561,6 +599,7 @@ export async function openNuevoDomicilioModal(espaciosOcupados) {
       body: JSON.stringify({
         telefono_cliente: cliente.telefono,
         id_ubicacion: ubicacion.id_ubicacion,
+        ubicacion_recogida: ubicacionRecogida,
         ...resultado,
       }),
     });
@@ -581,7 +620,9 @@ function DomiciliarioStepContent({ onBack, onSelect }) {
   const [domiciliarios, setDomiciliarios] = useState(null);
 
   useEffect(() => {
-    fetch("/api/domiciliarios")
+    // soloActivos=1: versión liviana que excluye domiciliarios desactivados —
+    // no deben poder recibir domicilios nuevos (ver DomiciliariosPage.js).
+    fetch("/api/domiciliarios?soloActivos=1")
       .then((res) => res.json())
       .then(setDomiciliarios);
   }, []);
