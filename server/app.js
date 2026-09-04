@@ -13,6 +13,8 @@ const proveedoresRoutes = require("./routes/proveedores.routes");
 const categoriasRoutes = require("./routes/categorias.routes");
 const lotesRoutes = require("./routes/lotes.routes");
 const inventarioRoutes = require("./routes/inventario.routes");
+const mantenimientoRoutes = require("./routes/mantenimiento.routes");
+const dashboardRoutes = require("./routes/dashboard.routes");
 
 const app = express();
 
@@ -51,6 +53,8 @@ app.use("/api/proveedores", proveedoresRoutes);
 app.use("/api/categorias", categoriasRoutes);
 app.use("/api/lotes", lotesRoutes);
 app.use("/api/inventario", inventarioRoutes);
+app.use("/api/mantenimiento", mantenimientoRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 // Middleware de error centralizado: cualquier error no capturado en una ruta cae
 // acá en vez de tumbar el proceso de Node. Se documenta en detalle en

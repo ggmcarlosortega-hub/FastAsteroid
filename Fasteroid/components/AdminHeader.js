@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Swal from "../lib/swal";
-import { Rocket, Users, Bike, LayoutDashboard, LogOut, Boxes, IdCard } from "lucide-react";
+import { Rocket, Users, Bike, LayoutDashboard, LogOut, Boxes, IdCard, Wrench } from "lucide-react";
 
 export default function AdminHeader({ nombre }) {
   const router = useRouter();
@@ -53,6 +53,10 @@ export default function AdminHeader({ nombre }) {
           <Link href="/admin/domiciliarios" className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
             <IdCard size={15} />
             Domiciliarios
+          </Link>
+          <Link href="/admin/mantenimiento" className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
+            <Wrench size={15} />
+            Mantenimiento
           </Link>
         </nav>
       </div>
