@@ -7,10 +7,10 @@
 > **Metodología documental:** estructura de Especificación de Requisitos de Software (ERS) e ingeniería
 > de requerimientos basada en escenarios (casos de uso) y en el comportamiento (diagramas de actividad),
 > según Roger S. Pressman, *Ingeniería del Software: un enfoque práctico*, 7.ª edición, McGraw-Hill.
-> **Versión:** 1.2 (agrega la especificación completa de casos de uso del módulo de mantenimiento del
-> vehículo y unifica explícitamente su origen de datos con las métricas planeadas del dashboard
-> administrativo — módulo sin implementar todavía, documentado por adelantado) · **Fecha:** 2026-08-31 ·
-> **Autor:** Equipo Fasteroid (documentado con asistencia de Claude Code)
+> **Versión:** 1.4 (Bloque 4 — dashboard administrativo unificado — implementado: CU-20, RF-45 y RF-48
+> pasan de especificación a "Implementado"; con esto toda la Fase 1 y la Fase 2 del backlog quedan
+> completas, solo resta la Fase 3) · **Fecha:** 2026-09-03 · **Autor:** Equipo Fasteroid (documentado
+> con asistencia de Claude Code)
 
 ---
 
@@ -43,12 +43,11 @@ proyecto bajo el enfoque de ingeniería de requerimientos de Pressman (7.ª ed.)
 Fasteroid es un sistema web (con una vista optimizada para celular, tipo PWA) que centraliza la gestión
 de domicilios de un negocio de reparto en Carepa, Antioquia. Cubre: autenticación por rol, registro y
 consulta de clientes con sus ubicaciones, ciclo de vida completo de un domicilio (creación, asignación,
-recogida, seguimiento GPS, entrega, cancelación, corrección) y un panel administrativo con historial y
-una comparación de ganancias/pérdidas. Quedan fuera del alcance implementado —pero dentro del alcance
-planeado del proyecto— el módulo de mantenimiento del vehículo, el dashboard administrativo completo, el
-escaneo de comandas por OCR y la navegación asistida por mapas (ver sección 9). El módulo de
-mantenimiento y el dashboard completo ya cuentan con especificación de requisitos, casos de uso y
-actividad (secciones 3.2, 5, 6 y 7.1) aunque su implementación siga pendiente.
+recogida, seguimiento GPS, entrega, cancelación, corrección), un panel administrativo con historial,
+comparación de ganancias/pérdidas y un dashboard mensual unificado, el módulo de mantenimiento del
+vehículo (tanqueos, taller, compras adicionales, rendimiento km/galón), y el escaneo de comandas por
+OCR. Queda fuera del alcance implementado —pero dentro del alcance planeado del proyecto— la navegación
+asistida por mapas (Fase 3, ver sección 9).
 
 ### 1.3 Definiciones, acrónimos y abreviaturas
 
@@ -296,12 +295,12 @@ Cada requisito se identifica como **RF-NN**, con su estado real: **Implementado*
 | RF-40 | El sistema debe calcular, por período (día/semana/mes), el total de ganancias (suma de precios de domicilios entregados) y pérdidas (suma de precios de domicilios cancelados). | Implementado |
 | RF-41 | El sistema debe presentar una comparación gráfica de ganancias y pérdidas por período en el panel del Administrador. | Implementado |
 | RF-42 | El sistema debe permitir al Administrador acceder a los módulos de Clientes y Domicilios desde un panel principal. | Implementado |
-| RF-43 | El sistema debe permitir registrar eventos de mantenimiento del vehículo (tanqueo, taller, compra adicional) con kilometraje y costo. | Pendiente (Bloque 3) |
-| RF-44 | El sistema debe calcular el rendimiento del vehículo (km por galón) entre tanqueos consecutivos. | Pendiente (Bloque 3) |
-| RF-45 | El sistema debe presentar un dashboard administrativo con indicadores mensuales (domicilios, km, tanqueos, cliente más frecuente, gastos de combustible y mantenimiento). | Pendiente (Bloque 4) |
-| RF-46 | El sistema debe permitir digitalizar comandas físicas mediante OCR y prellenar el formulario de domicilio con los datos extraídos, editables antes de confirmar. | Pendiente (Fase 2) |
+| RF-43 | El sistema debe permitir registrar eventos de mantenimiento del vehículo (tanqueo, taller, compra adicional) con kilometraje y costo. | Implementado |
+| RF-44 | El sistema debe calcular el rendimiento del vehículo (km por galón) entre tanqueos consecutivos. | Implementado |
+| RF-45 | El sistema debe presentar un dashboard administrativo con indicadores mensuales (domicilios, km, tanqueos, cliente más frecuente, gastos de combustible y mantenimiento). | Implementado |
+| RF-46 | El sistema debe permitir digitalizar comandas físicas mediante OCR y prellenar el formulario de domicilio con los datos extraídos, editables antes de confirmar. | Implementado |
 | RF-47 | El sistema debe ofrecer una acción de navegación con enlace directo (deep link) a la app de mapas del dispositivo. | Pendiente (Fase 3) |
-| RF-48 | El sistema debe unificar en el dashboard administrativo los indicadores derivados de domicilios (ganancias/pérdidas, km recorridos, cliente más frecuente) con los derivados de mantenimiento del vehículo (gastos de combustible, gastos de taller/compras, rendimiento km/galón), agrupados por el mismo período mensual — ver sección 7.1. | Pendiente (Bloque 4, depende de Bloque 3) |
+| RF-48 | El sistema debe unificar en el dashboard administrativo los indicadores derivados de domicilios (ganancias/pérdidas, km recorridos, cliente más frecuente) con los derivados de mantenimiento del vehículo (gastos de combustible, gastos de taller/compras, rendimiento km/galón), agrupados por el mismo período mensual — ver sección 7.1. | Implementado |
 
 ### 3.3 Requisitos no funcionales
 
@@ -353,9 +352,9 @@ Expresados desde la perspectiva de cada actor, en el formato *Como \<rol\>, quie
 | RU-12 | Como administrador, quiero ver todos los domicilios en curso, asignados e históricos de todos los domiciliarios, para tener visibilidad completa de la operación. | RF-36 a RF-38 |
 | RU-13 | Como administrador, quiero corregir los productos o el precio de un domicilio si me equivoqué al crearlo, para que el registro quede correcto sin cancelarlo. | RF-39 |
 | RU-14 | Como administrador, quiero ver una comparación gráfica de ganancias y pérdidas por período, para saber cuánto se está ganando o perdiendo por domicilios cancelados. | RF-40, RF-41 |
-| RU-15 | Como administrador, quiero ver un dashboard con los indicadores clave del mes —incluyendo los de mantenimiento junto a los de domicilios—, para tomar decisiones sin calcular nada manualmente. | RF-45, RF-48 *(pendientes)* |
-| RU-16 | Como administrador, quiero registrar los tanqueos y mantenimientos de la moto, para saber cuánto cuesta operarla frente a lo que factura. | RF-43 *(pendiente)* |
-| RU-17 | Como administrador, quiero consultar el historial de mantenimientos y el rendimiento (km/galón) de la moto, para detectar si el consumo se está saliendo de lo normal. | RF-44 *(pendiente)* |
+| RU-15 | Como administrador, quiero ver un dashboard con los indicadores clave del mes —incluyendo los de mantenimiento junto a los de domicilios—, para tomar decisiones sin calcular nada manualmente. | RF-45, RF-48 |
+| RU-16 | Como administrador, quiero registrar los tanqueos y mantenimientos de la moto, para saber cuánto cuesta operarla frente a lo que factura. | RF-43 |
+| RU-17 | Como administrador, quiero consultar el historial de mantenimientos y el rendimiento (km/galón) de la moto, para detectar si el consumo se está saliendo de lo normal. | RF-44 |
 
 ---
 
@@ -560,8 +559,8 @@ operaciones CRUD directas de menor complejidad y se resumen en la tabla al final
 
 **CU-18 — Registrar evento de mantenimiento**
 
-> Módulo sin implementar (Bloque 3, ver sección 9); caso de uso documentado por adelantado sobre el
-> modelo de datos ya definido (`RegistroMantenimiento`, ver sección 7).
+> Implementado (Bloque 3) — `server/modules/mantenimiento/mantenimiento.service.js`,
+> `Fasteroid/modules/mantenimiento/`, ruta `/admin/mantenimiento`.
 
 | Campo | Detalle |
 |---|---|
@@ -576,7 +575,8 @@ operaciones CRUD directas de menor complejidad y se resumen en la tabla al final
 
 **CU-19 — Consultar historial de mantenimiento y rendimiento del vehículo**
 
-> Módulo sin implementar (Bloque 3); depende de que exista CU-18.
+> Implementado (Bloque 3) — `listRegistros()` en `mantenimiento.service.js` calcula el
+> rendimiento entre tanqueos consecutivos; se muestra en la lista de `/admin/mantenimiento`.
 
 | Campo | Detalle |
 |---|---|
@@ -591,9 +591,9 @@ operaciones CRUD directas de menor complejidad y se resumen en la tabla al final
 
 **CU-20 — Ver dashboard administrativo (indicadores mensuales unificados)**
 
-> Módulo sin implementar (Bloque 4); unifica en un mismo panel los indicadores que hoy están
-> repartidos entre el módulo de domicilios (ya implementado, CU-17) y el módulo de mantenimiento (CU-19,
-> sin implementar) — ver el detalle de origen de cada indicador en la sección 7.1.
+> Implementado (Bloque 4) — `server/modules/dashboard/dashboard.service.js` (agregador delgado
+> sobre `domicilios.service.js` y `mantenimiento.service.js`, sin SQL propia nueva),
+> `Fasteroid/modules/dashboard/`, panel principal del Admin (`/admin`) con selector de mes.
 
 | Campo | Detalle |
 |---|---|
@@ -753,7 +753,7 @@ endif
 
 ### DA-06 — Registrar evento de mantenimiento y cálculo de rendimiento
 
-> Módulo sin implementar (Bloque 3); diagrama documentado por adelantado junto con CU-18/CU-19.
+> Implementado (Bloque 3).
 
 ```plantuml
 @startuml da-06-registro-mantenimiento
@@ -792,7 +792,7 @@ entidades principales, tal como están implementadas en `server/db/schema.sql` (
 | `Cliente` | `telefono` (PK), `nombre`, `fecha_primer_registro` | Identificado por teléfono |
 | `Ubicacion` | `id_ubicacion` (PK), `telefono_cliente` (FK), `latitud`, `longitud`, `alias_direccion` | Un cliente puede tener varias |
 | `Domicilio` | `id_domicilio` (PK), `telefono_cliente` (FK), `telefono_domiciliario` (FK), `id_ubicacion` (FK), `productos`, `precio`, `estado` (`Asignado`\|`En_curso`\|`Entregado`\|`Cancelado`), `espacio_baul` (nullable, 1-3), `distancia_km`, `metodo_pago`, `valor_recaudado`, `motivo_cancelacion`, `foto_productos_url`, `fecha_hora_creacion`, `fecha_hora_entrega` | Entidad central del sistema |
-| `RegistroMantenimiento` | `id_registro` (PK), `kilometraje_actual`, `tipo`, `galones_ingresados`, `costo_total`, `descripcion_compras_y_taller` | Definida en el esquema; sin flujo de UI/API todavía (RF-43 pendiente) |
+| `RegistroMantenimiento` | `id_registro` (PK), `kilometraje_actual`, `tipo`, `galones_ingresados`, `costo_total`, `descripcion_compras_y_taller` | Implementada (Bloque 3) — sin FK a nada, sistema de una sola moto |
 
 Reglas de integridad reforzadas a nivel de base de datos: `espacio_baul` entre 1 y 3 (o `NULL`),
 `estado` restringido a los cuatro valores válidos, `motivo_cancelacion` obligatorio cuando
@@ -801,27 +801,23 @@ domiciliario en el mismo espacio del baúl.
 
 ### 7.1 Métricas del dashboard administrativo y su origen (RF-45, RF-48)
 
-Hasta esta versión del documento, RF-45 enumeraba los indicadores del dashboard sin especificar de qué
-registro sale cada uno, y el apartado de mantenimiento nunca se conectaba explícitamente con el
-dashboard ni tenía casos de uso propios (CU-18 a CU-20, sección 5.3). La siguiente tabla unifica ambos
-orígenes de datos — `Domicilio` (ya implementado) y `RegistroMantenimiento` (sin implementar) — bajo el
-mismo conjunto de indicadores mensuales planeados:
+Cuando se escribió por primera vez esta sección, ninguno de estos indicadores estaba unificado en un
+solo panel. Ahora los ocho salen del mismo endpoint (`GET /api/dashboard/resumen?mes=YYYY-MM`,
+`dashboard.service.js`), que no repite ninguna consulta SQL propia — agrega sobre lo que ya devuelven
+`domiciliosService.listHistorial()` y `mantenimientoService.listRegistros()`:
 
 | Indicador del dashboard | Entidad / campo de origen | Cálculo | Estado |
 |---|---|---|---|
-| Domicilios entregados del mes | `Domicilio` (`estado = 'Entregado'`) | `COUNT(*)` agrupado por mes | Pendiente (agregación nueva; el dato ya existe) |
-| Km recorridos del mes | `Domicilio.distancia_km` | `SUM(distancia_km)` de domicilios entregados | Pendiente (agregación nueva; el dato ya existe) |
-| Cliente más frecuente del mes | `Domicilio.telefono_cliente` | `COUNT(*)` agrupado por cliente, máximo | Pendiente (agregación nueva) |
-| Ganancias / pérdidas del mes | `Domicilio.precio` agrupado por `estado` | Ya calculado — reutiliza RF-40/RF-41 tal cual | Implementado (reutilizable sin cambios) |
-| Tanqueos del mes | `RegistroMantenimiento` (`tipo = 'Tanqueo'`) | `COUNT(*)` | Pendiente — depende del Bloque 3 (CU-18) |
-| Gasto en combustible del mes | `RegistroMantenimiento.costo_total` (`tipo = 'Tanqueo'`) | `SUM(costo_total)` | Pendiente — depende del Bloque 3 |
-| Gasto en taller / compras del mes | `RegistroMantenimiento.costo_total` (`tipo IN ('Taller', 'Compra_Adicional')`) | `SUM(costo_total)` | Pendiente — depende del Bloque 3 |
-| Rendimiento promedio (km/galón) | `Domicilio.distancia_km` + `RegistroMantenimiento.galones_ingresados` | Ver CU-19: km recorridos entre tanqueos consecutivos ÷ galones del segundo tanqueo, promediado en el mes | Pendiente — depende del Bloque 3 y de al menos 2 tanqueos por mes |
+| Domicilios entregados del mes | `Domicilio` (`estado = 'Entregado'`) | `COUNT(*)` agrupado por mes | Implementado |
+| Km recorridos del mes | `Domicilio.distancia_km` | `SUM(distancia_km)` de domicilios entregados | Implementado |
+| Cliente más frecuente del mes | `Domicilio.telefono_cliente` | `COUNT(*)` agrupado por cliente entregados, máximo | Implementado |
+| Ganancias / pérdidas del mes | `Domicilio.precio` agrupado por `estado` | Reutiliza `GananciasPerdidas.js` tal cual (RF-40/RF-41) | Implementado |
+| Tanqueos del mes | `RegistroMantenimiento` (`tipo = 'Tanqueo'`) | `COUNT(*)` | Implementado |
+| Gasto en combustible del mes | `RegistroMantenimiento.costo_total` (`tipo = 'Tanqueo'`) | `SUM(costo_total)` | Implementado |
+| Gasto en taller / compras del mes | `RegistroMantenimiento.costo_total` (`tipo IN ('Taller', 'Compra_Adicional')`) | `SUM(costo_total)` | Implementado |
+| Rendimiento promedio (km/galón) | `rendimiento_km_galon` por tanqueo (ya calculado en `listRegistros()`, CU-19) | Promedio de los tanqueos del mes elegido (un tanqueo "a caballo" entre dos meses se compara igual contra el anterior, esté o no en el mismo mes) | Implementado |
 
-La fila de ganancias/pérdidas es la única que ya está construida (RF-40, RF-41, visible hoy en
-`/admin/domicilios`); las demás requieren, primero, que exista el Bloque 3 (mantenimiento, CU-18/CU-19)
-y, después, una capa de agregación nueva que combine ambas entidades por período — es exactamente lo que
-describe CU-20 y exige RF-48.
+Las ocho filas están construidas y verificadas contra datos reales — ver CU-20.
 
 ---
 
@@ -841,9 +837,9 @@ describe CU-20 y exige RF-48.
 | RU-12 | CU-09 | RF-36 a RF-38 | — |
 | RU-13 | CU-07 | RF-39 | — |
 | RU-14 | CU-17 | RF-40, RF-41 | — |
-| RU-15 *(pendiente)* | CU-20 | RF-45, RF-48 | — |
-| RU-16 *(pendiente)* | CU-18 | RF-43 | DA-06 |
-| RU-17 *(pendiente)* | CU-19 | RF-44 | — |
+| RU-15 | CU-20 | RF-45, RF-48 | — |
+| RU-16 | CU-18 | RF-43 | DA-06 |
+| RU-17 | CU-19 | RF-44 | — |
 
 ---
 
@@ -857,16 +853,16 @@ Fase 1. Estado real al momento de este documento:
 | Bloque 0 | Esquema de base de datos y autenticación | ✅ Implementado |
 | Bloque 1 | CRUD de clientes y ubicaciones | ✅ Implementado |
 | Bloque 2 | Módulo de domicilios (creación, asignación, recogida, tracking, entrega, cancelación, historial) | ✅ Implementado, incluyendo dos rondas de revisión posteriores (estado "Asignado" y corrección automática de ubicación al entregar) |
-| Bloque 3 | Mantenimiento del vehículo (tanqueos, taller, rendimiento) | ⏳ Pendiente — especificación completa (CU-18, CU-19, DA-06) ya documentada en las secciones 5 y 6, sin construir todavía |
-| Bloque 4 | Dashboard administrativo completo | ⏳ Pendiente — se adelantó únicamente la gráfica de ganancias/pérdidas (RF-40, RF-41) a `/admin/domicilios`; sus indicadores de mantenimiento (RF-48, CU-20, ver sección 7.1) dependen de que se construya primero el Bloque 3 |
-| Fase 2 | Escaneo de comandas por OCR | ⏳ Pendiente |
+| Bloque 3 | Mantenimiento del vehículo (tanqueos, taller, rendimiento) | ✅ Implementado — `server/modules/mantenimiento/`, `/admin/mantenimiento` (CU-18, CU-19, DA-06) |
+| Bloque 4 | Dashboard administrativo completo | ✅ Implementado — `server/modules/dashboard/`, panel principal del Admin (`/admin`) con selector de mes (RF-45, RF-48, CU-20, ver sección 7.1) |
+| Fase 2 | Escaneo de comandas por OCR | ✅ Implementado — Tesseract.js, `EscanearComandaModal.js`, con autocompletar de cliente por teléfono |
 | Fase 3 | Analítica avanzada, navegación asistida, exportes | ⏳ Pendiente |
 
-En síntesis: el **núcleo operativo del negocio** (autenticación, clientes, ciclo de vida completo de un
-domicilio) está implementado y verificado; lo pendiente corresponde a módulos de valor agregado
-(mantenimiento del vehículo, dashboard consolidado) y a funcionalidades de fases posteriores que
-dependen de decisiones de negocio o de servicios externos (OCR, mapas) explícitamente diferidas desde el
-planteamiento original del proyecto.
+En síntesis: toda la Fase 1 del backlog (bloques 0 a 4) y la Fase 2 (OCR) están implementadas y
+verificadas — núcleo operativo del negocio, catálogo con categorías, panel de domiciliarios,
+mantenimiento del vehículo y el dashboard administrativo que unifica ambos. Lo único pendiente es la
+Fase 3 (analítica avanzada, navegación asistida por mapas, exportes), diferida desde el planteamiento
+original del proyecto por depender de decisiones de negocio o de servicios externos de pago.
 
 ---
 
