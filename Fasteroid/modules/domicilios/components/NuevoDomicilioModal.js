@@ -518,7 +518,7 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, onBack, onSubmit, 
           className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           <Save size={15} />
-          {pedirEspacio ? "Iniciar domicilio" : "Asignar domicilio"}
+          {pedirEspacio ? "Iniciar domicilio" : "Agregar a la lista de espera"}
         </button>
       </div>
     </form>
@@ -614,84 +614,13 @@ export async function openNuevoDomicilioModal(espaciosOcupados, ubicacionRecogid
   }
 }
 
-// --- Flujo exclusivo de Admin: además elige a qué domiciliario se asigna. ---
-
-function DomiciliarioStepContent({ onBack, onSelect }) {
-  const [domiciliarios, setDomiciliarios] = useState(null);
-
-  useEffect(() => {
-    // soloActivos=1: versión liviana que excluye domiciliarios desactivados —
-    // no deben poder recibir domicilios nuevos (ver DomiciliariosPage.js).
-    fetch("/api/domiciliarios?soloActivos=1")
-      .then((res) => res.json())
-      .then(setDomiciliarios);
-  }, []);
-
-  return (
-    <div className="text-left">
-      <div className="max-h-56 divide-y divide-zinc-200 overflow-y-auto rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-        {domiciliarios === null && <p className="p-4 text-center text-sm text-zinc-400">Cargando...</p>}
-        {domiciliarios?.length === 0 && (
-          <p className="p-4 text-center text-sm text-zinc-400">No hay domiciliarios registrados.</p>
-        )}
-        {domiciliarios?.map((domiciliario) => (
-          <button
-            key={domiciliario.telefono}
-            onClick={() => onSelect(domiciliario)}
-            className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
-          >
-            <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
-              {domiciliario.nombre}
-            </span>
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">{domiciliario.telefono}</span>
-          </button>
-        ))}
-      </div>
-
-      <button
-        onClick={onBack}
-        className="mt-3 flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-50"
-      >
-        <ArrowLeft size={14} />
-        Ubicación
-      </button>
-    </div>
-  );
-}
-
-function openDomiciliarioStep() {
-  return new Promise((resolve) => {
-    let resolved = false;
-    MySwal.fire({
-      title: "Nuevo domicilio · Asignar a",
-      html: (
-        <DomiciliarioStepContent
-          onBack={() => {
-            resolved = true;
-            resolve(VOLVER);
-            MySwal.close();
-          }}
-          onSelect={(domiciliario) => {
-            resolved = true;
-            resolve(domiciliario);
-            MySwal.close();
-          }}
-        />
-      ),
-      showConfirmButton: false,
-      showCloseButton: true,
-      width: 460,
-      didClose: () => {
-        if (!resolved) resolve(null);
-      },
-    });
-  });
-}
+// --- Flujo exclusivo de Admin: ya no elige a qué domiciliario se asigna — el
+// domicilio entra a la lista de espera compartida (ver DomiciliarioHomePage.js /
+// AdminDomiciliosPage.js) y cualquier domiciliario disponible lo toma después. ---
 
 export async function openNuevoDomicilioModalAdmin() {
   let cliente = null;
   let ubicacion = null;
-  let domiciliario = null;
   let detalleError = null;
   let paso = "cliente";
 
@@ -712,28 +641,17 @@ export async function openNuevoDomicilioModalAdmin() {
       }
       if (!resultado) return null;
       ubicacion = resultado;
-      paso = "domiciliario";
-      continue;
-    }
-
-    if (paso === "domiciliario") {
-      const resultado = await openDomiciliarioStep();
-      if (resultado === VOLVER) {
-        paso = "ubicacion";
-        continue;
-      }
-      if (!resultado) return null;
-      domiciliario = resultado;
       paso = "detalle";
       continue;
     }
 
-    // paso === "detalle" — el Admin no elige espacio de baúl: lo hace el
-    // domiciliario al recoger el domicilio (sección 4 del documento).
+    // paso === "detalle" — el Admin no elige domiciliario ni espacio de baúl: el
+    // domicilio queda en la lista de espera compartida, y cualquier domiciliario
+    // disponible lo toma después con "Recoger" (ver domicilios.service.js).
     const resultado = await openDetalleStep([], detalleError, false);
     if (resultado === VOLVER) {
       detalleError = null;
-      paso = "domiciliario";
+      paso = "ubicacion";
       continue;
     }
     if (!resultado) return null;
@@ -744,7 +662,6 @@ export async function openNuevoDomicilioModalAdmin() {
       body: JSON.stringify({
         telefono_cliente: cliente.telefono,
         id_ubicacion: ubicacion.id_ubicacion,
-        telefono_domiciliario: domiciliario.telefono,
         ...resultado,
       }),
     });

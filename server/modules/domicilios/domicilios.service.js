@@ -31,7 +31,7 @@ const SELECT_CON_RELACIONES = `
   FROM domicilio d
   JOIN cliente c ON c.telefono = d.telefono_cliente
   JOIN ubicacion u ON u.id_ubicacion = d.id_ubicacion
-  JOIN usuario dom ON dom.telefono = d.telefono_domiciliario
+  LEFT JOIN usuario dom ON dom.telefono = d.telefono_domiciliario
 `;
 
 // DECIMAL vuelve como string desde mysql2 (para no perder precisión sin que lo
@@ -70,7 +70,9 @@ function hydrate(row) {
       longitud: row.u_longitud,
       alias_direccion: row.u_alias_direccion,
     },
-    domiciliario: { telefono: row.dom_telefono, nombre: row.dom_nombre },
+    // NULL mientras el domicilio está en la lista de espera compartida, sin tomar
+    // todavía por ningún domiciliario (ver comentario de la tabla en schema.sql).
+    domiciliario: row.dom_telefono ? { telefono: row.dom_telefono, nombre: row.dom_nombre } : null,
   };
 }
 
@@ -106,21 +108,14 @@ async function listActivosTodos() {
   return rows.map(hydrate);
 }
 
-// Domicilios que el Admin ya asignó a este domiciliario pero que todavía no
-// recoge (sin espacio de baúl asignado todavía) — sección 4 del documento.
-async function listAsignados(telefonoDomiciliario) {
-  const [rows] = await pool.execute(
-    `${SELECT_CON_RELACIONES} WHERE d.telefono_domiciliario = ? AND d.estado = 'Asignado' ORDER BY d.fecha_hora_creacion ASC`,
-    [telefonoDomiciliario]
-  );
-  return rows.map(hydrate);
-}
-
-// Vista de Admin: todos los domicilios asignados y pendientes de recoger, de
-// cualquier domiciliario.
+// Lista de espera compartida: domicilios que el Admin creó pero que todavía no toma
+// ningún domiciliario. Es la misma lista para el Admin y para cualquier domiciliario —
+// "cualquiera lo toma primero" (ver recogerDomicilio). El filtro por NULL es
+// defensivo: por diseño todo domicilio 'Asignado' debería tener telefono_domiciliario
+// NULL, pero protege contra datos viejos de antes de este cambio.
 async function listAsignadosTodos() {
   const [rows] = await pool.execute(
-    `${SELECT_CON_RELACIONES} WHERE d.estado = 'Asignado' ORDER BY d.fecha_hora_creacion ASC`
+    `${SELECT_CON_RELACIONES} WHERE d.estado = 'Asignado' AND d.telefono_domiciliario IS NULL ORDER BY d.fecha_hora_creacion ASC`
   );
   return rows.map(hydrate);
 }
@@ -247,17 +242,20 @@ async function insertarLineasProducto(id_domicilio, lineas) {
   }
 }
 
-// Cuando lo crea el Admin (creadoPorAdmin=true), queda "Asignado" sin espacio de
-// baúl: el domiciliario recién lo elige al recogerlo con recogerDomicilio() (sección
-// 4). Cuando lo crea el propio domiciliario, lo tiene en mano de una vez y elige el
-// espacio ahí mismo, arrancando directo en "En_curso" como antes.
+// Cuando lo crea el Admin (creadoPorAdmin=true), queda "Asignado" SIN domiciliario ni
+// espacio de baúl — entra a la lista de espera compartida, y cualquier domiciliario
+// disponible lo toma después con recogerDomicilio(). Cuando lo crea el propio
+// domiciliario, lo tiene en mano de una vez y elige el espacio ahí mismo, arrancando
+// directo en "En_curso" como antes.
 async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = false } = {}) {
   const telefono_cliente = data.telefono_cliente?.trim();
   const id_ubicacion = data.id_ubicacion?.trim();
   const precio = Number(data.precio);
   const foto_productos_url = data.foto_productos_url ?? null;
 
-  if (!telefonoDomiciliario) {
+  // El domiciliario (propio) siempre viene de su sesión y sigue siendo obligatorio acá.
+  // Cuando lo crea el Admin, en cambio, ya no elige a nadie.
+  if (!creadoPorAdmin && !telefonoDomiciliario) {
     throw new ServiceError("telefono_domiciliario es obligatorio", 400);
   }
   if (!telefono_cliente || !id_ubicacion) {
@@ -272,11 +270,13 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
 
   const { productos, lineas } = await resolverLineasProductos(data.productos_lineas);
 
-  const [domiciliarioRows] = await pool.execute("SELECT rol FROM usuario WHERE telefono = ?", [
-    telefonoDomiciliario,
-  ]);
-  if (!domiciliarioRows[0] || domiciliarioRows[0].rol !== "Domiciliario") {
-    throw new ServiceError("El domiciliario indicado no existe", 400);
+  if (!creadoPorAdmin) {
+    const [domiciliarioRows] = await pool.execute("SELECT rol FROM usuario WHERE telefono = ?", [
+      telefonoDomiciliario,
+    ]);
+    if (!domiciliarioRows[0] || domiciliarioRows[0].rol !== "Domiciliario") {
+      throw new ServiceError("El domiciliario indicado no existe", 400);
+    }
   }
 
   const [ubicacionRows] = await pool.execute(
@@ -290,11 +290,13 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
   const id_domicilio = crypto.randomUUID();
 
   if (creadoPorAdmin) {
+    // telefono_domiciliario queda NULL (columna omitida) — entra a la lista de
+    // espera compartida, sin nadie asignado todavía.
     await pool.execute(
       `INSERT INTO domicilio
-         (id_domicilio, telefono_cliente, telefono_domiciliario, id_ubicacion, productos, precio, estado, foto_productos_url)
-       VALUES (?, ?, ?, ?, ?, ?, 'Asignado', ?)`,
-      [id_domicilio, telefono_cliente, telefonoDomiciliario, id_ubicacion, productos, precio, foto_productos_url]
+         (id_domicilio, telefono_cliente, id_ubicacion, productos, precio, estado, foto_productos_url)
+       VALUES (?, ?, ?, ?, ?, 'Asignado', ?)`,
+      [id_domicilio, telefono_cliente, id_ubicacion, productos, precio, foto_productos_url]
     );
     await insertarLineasProducto(id_domicilio, lineas);
     emitCambio("domicilios:changed");
@@ -364,19 +366,31 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
   return getDomicilioPorId(id_domicilio);
 }
 
-// El domiciliario recoge un domicilio "Asignado" por el Admin y ahí mismo elige en
-// qué espacio del baúl lo lleva — solo entonces pasa a "En_curso" (sección 4).
+// El domiciliario toma un domicilio de la lista de espera compartida (creada por el
+// Admin, sin nadie asignado todavía) y ahí mismo elige en qué espacio del baúl lo
+// lleva — solo entonces pasa a "En_curso" y queda fijado a él. "Recoger" es, en la
+// práctica, la acción de "tomar" de la lista de espera.
 async function recogerDomicilio(id, telefonoDomiciliario, data) {
   const [rows] = await pool.execute("SELECT * FROM domicilio WHERE id_domicilio = ?", [id]);
   const domicilio = rows[0];
   if (!domicilio) {
     throw new ServiceError("Domicilio no encontrado", 404);
   }
-  if (domicilio.telefono_domiciliario !== telefonoDomiciliario) {
-    throw new ServiceError("No autorizado", 403);
+  // Ya no se asigna a un domiciliario específico al crearlo — cualquiera disponible
+  // puede tomar uno de la lista de espera (telefono_domiciliario queda NULL hasta que
+  // alguien lo toma). Si ya tiene domiciliario, otro se adelantó.
+  if (domicilio.telefono_domiciliario != null) {
+    throw new ServiceError("Ese domicilio ya fue tomado por otro domiciliario", 409);
   }
   if (domicilio.estado !== "Asignado") {
     throw new ServiceError("Ese domicilio ya fue recogido o cerrado", 409);
+  }
+
+  const [domiciliarioRows] = await pool.execute("SELECT activo FROM usuario WHERE telefono = ?", [
+    telefonoDomiciliario,
+  ]);
+  if (!domiciliarioRows[0]?.activo) {
+    throw new ServiceError("Tu cuenta está desactivada — no puedes tomar domicilios nuevos", 403);
   }
 
   const espacio_baul = Number(data.espacio_baul);
@@ -407,12 +421,21 @@ async function recogerDomicilio(id, telefonoDomiciliario, data) {
   }
 
   try {
-    await pool.execute(
+    // La condición telefono_domiciliario IS NULL en el WHERE es lo que hace el
+    // "tomar" atómico: si dos domiciliarios llegan casi al mismo tiempo, el UPDATE
+    // del segundo en llegar afecta 0 filas (el primero ya lo cerró) — MySQL bloquea
+    // la fila durante cada UPDATE, así que no hay ventana real entre "consultar" y
+    // "guardar" como si fueran dos pasos separados.
+    const [result] = await pool.execute(
       `UPDATE domicilio
-       SET estado = 'En_curso', espacio_baul = ?, latitud_recogida = ?, longitud_recogida = ?
-       WHERE id_domicilio = ?`,
-      [espacio_baul, latitudRecogida, longitudRecogida, id]
+       SET telefono_domiciliario = ?, estado = 'En_curso', espacio_baul = ?,
+           latitud_recogida = ?, longitud_recogida = ?
+       WHERE id_domicilio = ? AND telefono_domiciliario IS NULL AND estado = 'Asignado'`,
+      [telefonoDomiciliario, espacio_baul, latitudRecogida, longitudRecogida, id]
     );
+    if (result.affectedRows === 0) {
+      throw new ServiceError("Ese domicilio ya fue tomado por otro domiciliario", 409);
+    }
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY") {
       throw new ServiceError("Ese espacio del baúl ya está ocupado por otro domicilio en curso", 409);
@@ -631,7 +654,6 @@ module.exports = {
   getDomicilio,
   listActivos,
   listActivosTodos,
-  listAsignados,
   listAsignadosTodos,
   listDomiciliarios,
   listDomiciliariosConTotales,

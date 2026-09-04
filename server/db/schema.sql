@@ -75,8 +75,14 @@ CREATE TABLE ubicacion (
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- estado: 'Asignado' (creado por el Admin, sin espacio de baúl todavía) | 'En_curso'
--- (recogido, tracking activo) | 'Entregado' | 'Cancelado'.
+-- estado: 'Asignado' (creado por el Admin, en la lista de espera compartida — sin
+-- domiciliario ni espacio de baúl todavía) | 'En_curso' (tomado por algún domiciliario,
+-- tracking activo) | 'Entregado' | 'Cancelado'.
+--
+-- telefono_domiciliario es NULL mientras el domicilio está en la lista de espera
+-- ('Asignado', creado por el Admin sin elegir a nadie) — cualquier domiciliario
+-- disponible lo toma con recogerDomicilio(), que lo fija ahí de forma atómica (ver
+-- domicilios.service.js). Cuando lo crea el propio domiciliario, se fija de una vez.
 --
 -- espacio_activo es una columna generada (STORED) que vale espacio_baul solo cuando
 -- estado = 'En_curso', y NULL en cualquier otro caso. MySQL no soporta índices únicos
@@ -86,7 +92,7 @@ CREATE TABLE ubicacion (
 CREATE TABLE domicilio (
   id_domicilio           CHAR(36)       PRIMARY KEY,
   telefono_cliente       VARCHAR(20)    NOT NULL,
-  telefono_domiciliario  VARCHAR(20)    NOT NULL,
+  telefono_domiciliario  VARCHAR(20)    NULL,
   -- Se fija al crear el domicilio, pero se reemplaza al entregar por la ubicación GPS
   -- real capturada en ese momento (sección 6 del documento unificado).
   id_ubicacion           CHAR(36)       NOT NULL,

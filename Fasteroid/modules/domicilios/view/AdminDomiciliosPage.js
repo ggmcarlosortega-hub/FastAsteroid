@@ -45,14 +45,14 @@ export default function AdminDomiciliosPage() {
         </button>
       </div>
 
-      {/* Sección "asignados": domicilios creados por el Admin y ya repartidos a
-          un domiciliario, pero que ese domiciliario todavía no recoge (sin
-          espacio de baúl). Vista de TODOS los domiciliarios, no solo uno. */}
+      {/* Sección "lista de espera": domicilios que el Admin creó sin asignarlos a
+          nadie — cualquier domiciliario disponible los ve y el primero que
+          presiona "Recoger" se lo queda (ver recogerDomicilio en el backend). */}
       {asignados.length > 0 && (
         <div className="mt-6">
           <h2 className="flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
             <Inbox size={15} />
-            Asignados — pendientes de recoger
+            Lista de espera — sin domiciliario todavía
           </h2>
           <div className="mt-2 flex flex-col gap-2">
             {asignados.map((domicilio) => (
@@ -65,10 +65,6 @@ export default function AdminDomiciliosPage() {
                   <p className="mt-1 flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                     <MapPin size={12} />
                     {domicilio.ubicacion.alias_direccion}
-                  </p>
-                  <p className="mt-1 flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-                    <User size={12} />
-                    {domicilio.domiciliario.nombre}
                   </p>
                   <p className="mt-1 flex items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-300">
                     <Package size={13} />

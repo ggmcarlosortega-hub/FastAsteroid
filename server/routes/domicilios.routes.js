@@ -29,15 +29,9 @@ router.get(
     }
 
     if (sp.vista === "asignados") {
-      if (session.rol === "Admin") {
-        const telefono = sp.telefono;
-        return res.json(
-          telefono
-            ? await domiciliosService.listAsignados(telefono)
-            : await domiciliosService.listAsignadosTodos()
-        );
-      }
-      return res.json(await domiciliosService.listAsignados(session.telefono));
+      // Lista de espera compartida: es la misma para el Admin y para cualquier
+      // domiciliario — ya no hay un filtro "asignados a mí" (ver domicilios.service.js).
+      return res.json(await domiciliosService.listAsignadosTodos());
     }
 
     const telefonoDomiciliario = session.rol === "Admin" ? sp.telefono || undefined : session.telefono;

@@ -148,7 +148,7 @@ export default function DomicilioDetallePage() {
           {domicilio.espacio_baul != null ? `Espacio ${domicilio.espacio_baul}` : "Sin recoger todavía"}
         </Dato>
         <Dato icon={User} label="Domiciliario">
-          {domicilio.domiciliario.nombre}
+          {domicilio.domiciliario?.nombre ?? "Sin asignar — en lista de espera"}
         </Dato>
         <Dato icon={Calendar} label="Creado">
           {new Date(domicilio.fecha_hora_creacion).toLocaleString("es-CO")}

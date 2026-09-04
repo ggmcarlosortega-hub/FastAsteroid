@@ -51,7 +51,7 @@ export function useDomiciliosAdmin() {
       toast: true,
       position: "top-end",
       icon: "success",
-      title: `Domicilio asignado a ${creado.domiciliario?.nombre ?? "domiciliario"}`,
+      title: "Domicilio agregado a la lista de espera",
       timer: 1500,
       showConfirmButton: false,
     });

@@ -75,14 +75,15 @@ export default function DomiciliarioHomePage() {
         </div>
       </div>
 
-      {/* Sección "asignados": domicilios que el Admin le mandó a este
-          domiciliario pero que todavía no recoge (sin espacio de baúl). Solo
+      {/* Sección "lista de espera": domicilios que el Admin creó sin asignarlos a
+          nadie — los ve cualquier domiciliario, y el primero que presiona
+          "Recoger" se lo queda (ver recogerDomicilio en el backend). Solo
           aparece si hay al menos uno. */}
       {asignados.length > 0 && (
         <div className="mt-6">
           <h2 className="flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
             <Inbox size={15} />
-            Asignados por el administrador — pendientes de recoger
+            Lista de espera — cualquiera puede tomarlo
           </h2>
           <div className="mt-2 flex flex-col gap-2">
             {asignados.map((domicilio) => (
