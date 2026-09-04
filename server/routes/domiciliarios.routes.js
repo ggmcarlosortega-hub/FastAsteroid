@@ -1,18 +1,37 @@
 const express = require("express");
 const { asyncHandler } = require("../lib/asyncHandler");
+const { sendServiceError } = require("../lib/service-error");
 const { requireAuth, requireRole } = require("../lib/middleware/requireAuth");
 const domiciliosService = require("../modules/domicilios/domicilios.service");
 
 const router = express.Router();
 
-// Lista de usuarios con rol Domiciliario, para que el Admin elija a quién
-// asignar un domicilio nuevo (sección 4 del documento unificado).
+router.use(requireAuth);
+router.use(requireRole("Admin"));
+
+// ?soloActivos=1: versión liviana (solo telefono/nombre, solo activos) que usa el
+// selector de "a quién asignar" en NuevoDomicilioModal.js. Sin ese parámetro:
+// lista completa con totales históricos, para la pantalla "Domiciliarios".
 router.get(
   "/",
-  requireAuth,
-  requireRole("Admin"),
-  asyncHandler(async (_req, res) => {
-    res.json(await domiciliosService.listDomiciliarios());
+  asyncHandler(async (req, res) => {
+    if (req.query.soloActivos === "1") {
+      res.json(await domiciliosService.listDomiciliarios());
+    } else {
+      res.json(await domiciliosService.listDomiciliariosConTotales());
+    }
+  })
+);
+
+router.patch(
+  "/:telefono",
+  asyncHandler(async (req, res) => {
+    try {
+      await domiciliosService.setActivoDomiciliario(req.params.telefono, req.body?.activo);
+      res.json({ ok: true });
+    } catch (err) {
+      sendServiceError(res, err);
+    }
   })
 );
 

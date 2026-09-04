@@ -6,6 +6,8 @@ const { pool } = require("./pool");
 const USUARIOS_DEMO = [
   { telefono: "3000000000", nombre: "Admin Demo", password: "admin123", rol: "Admin" },
   { telefono: "3000000001", nombre: "Domiciliario Demo", password: "domi123", rol: "Domiciliario" },
+  { telefono: "3117646613", nombre: "Julian Moreno", password: "admin123", rol: "Admin" },
+  { telefono: "3148044909", nombre: "Carlos Ortega", password: "domi123", rol: "Domiciliario" },
 ];
 
 const CLIENTES_DEMO = [

@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const { pool } = require("../../db/pool");
 const { ServiceError } = require("../../lib/service-error");
+const { emitCambio } = require("../../lib/realtime");
 
 async function listClientes(q) {
   const where = q ? "WHERE c.telefono LIKE ? OR c.nombre LIKE ?" : "";
@@ -46,6 +47,7 @@ async function createCliente({ telefono, nombre }) {
     "SELECT telefono, nombre, fecha_primer_registro FROM cliente WHERE telefono = ?",
     [telefono]
   );
+  emitCambio("clientes:changed");
   return rows[0];
 }
 
@@ -86,6 +88,7 @@ async function updateCliente(telefono, { nombre }) {
     "SELECT telefono, nombre, fecha_primer_registro FROM cliente WHERE telefono = ?",
     [telefono]
   );
+  emitCambio("clientes:changed");
   return rows[0];
 }
 
@@ -104,6 +107,7 @@ async function deleteCliente(telefono) {
       409
     );
   }
+  emitCambio("clientes:changed");
 }
 
 async function addUbicacion(telefono, { alias_direccion, latitud, longitud }) {
@@ -128,6 +132,7 @@ async function addUbicacion(telefono, { alias_direccion, latitud, longitud }) {
     [id_ubicacion, telefono, alias_direccion, latitud, longitud]
   );
 
+  emitCambio("clientes:changed");
   return { id_ubicacion, telefono_cliente: telefono, alias_direccion, latitud, longitud };
 }
 
@@ -143,6 +148,7 @@ async function deleteUbicacion(id) {
       409
     );
   }
+  emitCambio("clientes:changed");
 }
 
 module.exports = {

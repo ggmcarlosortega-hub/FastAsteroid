@@ -2,9 +2,14 @@ const crypto = require("crypto");
 const { pool } = require("../../db/pool");
 const { ServiceError } = require("../../lib/service-error");
 const { haversineKm } = require("../../lib/haversine");
+const { emitCambio } = require("../../lib/realtime");
 
-const ESPACIOS_VALIDOS = [1, 2, 3];
-const METODOS_PAGO_VALIDOS = ["Efectivo", "Transferencia"];
+// El baúl físico tiene 3 secciones con 3 espacios cada una (ver imagenes/Baul.png
+// en la raíz del repo) — 9 espacios en total, numerados 1-9. Mantener sincronizado
+// con Fasteroid/modules/domicilios/components/EspacioBaulSelector.js y con el
+// CHECK de la columna espacio_baul en db/schema.sql.
+const ESPACIOS_VALIDOS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const METODOS_PAGO_VALIDOS = ["Efectivo", "Transferencia", "Ambos"];
 // Debajo de esto, la ubicación GPS capturada al entregar se considera "la misma"
 // que una ya guardada del cliente (evita duplicados, sección 22 del documento).
 const UMBRAL_UBICACION_DUPLICADA_KM = 0.1;
@@ -16,7 +21,8 @@ const SELECT_CON_RELACIONES = `
   SELECT
     d.id_domicilio, d.telefono_cliente, d.telefono_domiciliario, d.id_ubicacion,
     d.productos, d.precio, d.fecha_hora_creacion, d.fecha_hora_entrega,
-    d.valor_recaudado, d.metodo_pago, d.estado, d.distancia_km, d.espacio_baul,
+    d.valor_recaudado, d.valor_efectivo, d.valor_transferencia, d.metodo_pago,
+    d.estado, d.distancia_km, d.latitud_recogida, d.longitud_recogida, d.espacio_baul,
     d.foto_productos_url, d.motivo_cancelacion,
     c.telefono AS c_telefono, c.nombre AS c_nombre, c.fecha_primer_registro AS c_fecha_primer_registro,
     u.id_ubicacion AS u_id_ubicacion, u.telefono_cliente AS u_telefono_cliente,
@@ -42,9 +48,13 @@ function hydrate(row) {
     fecha_hora_creacion: row.fecha_hora_creacion,
     fecha_hora_entrega: row.fecha_hora_entrega,
     valor_recaudado: row.valor_recaudado != null ? Number(row.valor_recaudado) : null,
+    valor_efectivo: row.valor_efectivo != null ? Number(row.valor_efectivo) : null,
+    valor_transferencia: row.valor_transferencia != null ? Number(row.valor_transferencia) : null,
     metodo_pago: row.metodo_pago,
     estado: row.estado,
     distancia_km: row.distancia_km,
+    latitud_recogida: row.latitud_recogida,
+    longitud_recogida: row.longitud_recogida,
     espacio_baul: row.espacio_baul,
     foto_productos_url: row.foto_productos_url,
     motivo_cancelacion: row.motivo_cancelacion,
@@ -115,11 +125,47 @@ async function listAsignadosTodos() {
   return rows.map(hydrate);
 }
 
+// Versión liviana para el selector de "a quién asignar" — un domiciliario
+// desactivado no debe poder recibir domicilios nuevos, pero sí puede seguir
+// entregando los que ya tenía en curso (por eso el desactivar no toca eso).
 async function listDomiciliarios() {
   const [rows] = await pool.execute(
-    "SELECT telefono, nombre FROM usuario WHERE rol = 'Domiciliario' ORDER BY nombre ASC"
+    "SELECT telefono, nombre FROM usuario WHERE rol = 'Domiciliario' AND activo = TRUE ORDER BY nombre ASC"
   );
   return rows;
+}
+
+// Lista completa (activos e inactivos) con el total histórico recaudado por
+// cada domiciliario, para la pantalla "Domiciliarios" del Admin.
+async function listDomiciliariosConTotales() {
+  const [rows] = await pool.execute(
+    `SELECT u.telefono, u.nombre, u.activo,
+            COALESCE(SUM(d.valor_efectivo), 0) AS total_efectivo,
+            COALESCE(SUM(d.valor_transferencia), 0) AS total_transferencia
+     FROM usuario u
+     LEFT JOIN domicilio d ON d.telefono_domiciliario = u.telefono AND d.estado = 'Entregado'
+     WHERE u.rol = 'Domiciliario'
+     GROUP BY u.telefono, u.nombre, u.activo
+     ORDER BY u.nombre ASC`
+  );
+  return rows.map((row) => ({
+    telefono: row.telefono,
+    nombre: row.nombre,
+    activo: !!row.activo,
+    total_efectivo: Number(row.total_efectivo),
+    total_transferencia: Number(row.total_transferencia),
+  }));
+}
+
+async function setActivoDomiciliario(telefono, activo) {
+  const [result] = await pool.execute(
+    "UPDATE usuario SET activo = ? WHERE telefono = ? AND rol = 'Domiciliario'",
+    [!!activo, telefono]
+  );
+  if (result.affectedRows === 0) {
+    throw new ServiceError("Domiciliario no encontrado", 404);
+  }
+  emitCambio("domiciliarios:changed");
 }
 
 async function listHistorial({ telefonoDomiciliario, desde, hasta, estado } = {}) {
@@ -153,6 +199,54 @@ async function listHistorial({ telefonoDomiciliario, desde, hasta, estado } = {}
   return rows.map(hydrate);
 }
 
+// Valida las líneas de producto elegidas del catálogo ([{id_producto, cantidad}])
+// y devuelve tanto las líneas resueltas (con precio_unitario congelado al momento de
+// la venta) como el texto de despliegue que se guarda en domicilio.productos, para
+// que toda la UI que ya muestra ese campo siga funcionando sin cambios.
+async function resolverLineasProductos(productosLineas) {
+  if (!Array.isArray(productosLineas) || productosLineas.length === 0) {
+    throw new ServiceError("Elige al menos un producto", 400);
+  }
+
+  const lineas = [];
+  for (const linea of productosLineas) {
+    const id_producto = linea?.id_producto;
+    const cantidad = Number(linea?.cantidad);
+    if (!id_producto || !Number.isInteger(cantidad) || cantidad <= 0) {
+      throw new ServiceError("Cada producto necesita una cantidad válida", 400);
+    }
+
+    const [rows] = await pool.execute(
+      "SELECT id_producto, nombre, precio_venta, activo FROM producto WHERE id_producto = ?",
+      [id_producto]
+    );
+    const producto = rows[0];
+    if (!producto || !producto.activo) {
+      throw new ServiceError("Uno de los productos elegidos ya no está disponible", 400);
+    }
+
+    lineas.push({
+      id_producto,
+      cantidad,
+      precio_unitario: Number(producto.precio_venta),
+      nombre: producto.nombre,
+    });
+  }
+
+  const productos = lineas.map((l) => `${l.cantidad}x ${l.nombre}`).join(", ");
+  return { productos, lineas };
+}
+
+async function insertarLineasProducto(id_domicilio, lineas) {
+  for (const linea of lineas) {
+    await pool.execute(
+      `INSERT INTO domicilio_producto (id_domicilio_producto, id_domicilio, id_producto, cantidad, precio_unitario)
+       VALUES (?, ?, ?, ?, ?)`,
+      [crypto.randomUUID(), id_domicilio, linea.id_producto, linea.cantidad, linea.precio_unitario]
+    );
+  }
+}
+
 // Cuando lo crea el Admin (creadoPorAdmin=true), queda "Asignado" sin espacio de
 // baúl: el domiciliario recién lo elige al recogerlo con recogerDomicilio() (sección
 // 4). Cuando lo crea el propio domiciliario, lo tiene en mano de una vez y elige el
@@ -160,15 +254,14 @@ async function listHistorial({ telefonoDomiciliario, desde, hasta, estado } = {}
 async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = false } = {}) {
   const telefono_cliente = data.telefono_cliente?.trim();
   const id_ubicacion = data.id_ubicacion?.trim();
-  const productos = data.productos?.trim();
   const precio = Number(data.precio);
   const foto_productos_url = data.foto_productos_url ?? null;
 
   if (!telefonoDomiciliario) {
     throw new ServiceError("telefono_domiciliario es obligatorio", 400);
   }
-  if (!telefono_cliente || !id_ubicacion || !productos) {
-    throw new ServiceError("cliente, ubicación y productos son obligatorios", 400);
+  if (!telefono_cliente || !id_ubicacion) {
+    throw new ServiceError("cliente y ubicación son obligatorios", 400);
   }
   if (!Number.isFinite(precio) || precio <= 0) {
     throw new ServiceError("precio debe ser mayor a 0", 400);
@@ -176,6 +269,8 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
   if (!foto_productos_url) {
     throw new ServiceError("La foto del pedido es obligatoria", 400);
   }
+
+  const { productos, lineas } = await resolverLineasProductos(data.productos_lineas);
 
   const [domiciliarioRows] = await pool.execute("SELECT rol FROM usuario WHERE telefono = ?", [
     telefonoDomiciliario,
@@ -201,17 +296,34 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
        VALUES (?, ?, ?, ?, ?, ?, 'Asignado', ?)`,
       [id_domicilio, telefono_cliente, telefonoDomiciliario, id_ubicacion, productos, precio, foto_productos_url]
     );
+    await insertarLineasProducto(id_domicilio, lineas);
+    emitCambio("domicilios:changed");
     return getDomicilioPorId(id_domicilio);
   }
 
   const espacio_baul = Number(data.espacio_baul);
   if (!ESPACIOS_VALIDOS.includes(espacio_baul)) {
-    throw new ServiceError("espacio_baul debe ser 1, 2 o 3", 400);
+    throw new ServiceError(`espacio_baul debe estar entre 1 y ${ESPACIOS_VALIDOS.length}`, 400);
+  }
+
+  // Punto de partida para calcular distancia_km al entregar (Parte 1 del cambio de
+  // hoy) — obligatorio igual que la foto: sin esto no hay cómo calcular la
+  // distancia recorrida más adelante.
+  const latitudRecogida = Number(data.ubicacion_recogida?.latitud);
+  const longitudRecogida = Number(data.ubicacion_recogida?.longitud);
+  if (!Number.isFinite(latitudRecogida) || !Number.isFinite(longitudRecogida)) {
+    throw new ServiceError(
+      "No se pudo capturar tu ubicación GPS. Actívala e intenta de nuevo",
+      400
+    );
   }
 
   const activos = await listActivos(telefonoDomiciliario);
-  if (activos.length >= 3) {
-    throw new ServiceError("Ya tienes 3 domicilios en curso (máximo por carga)", 409);
+  if (activos.length >= ESPACIOS_VALIDOS.length) {
+    throw new ServiceError(
+      `Ya tienes ${ESPACIOS_VALIDOS.length} domicilios en curso (máximo por carga)`,
+      409
+    );
   }
   if (activos.some((d) => d.espacio_baul === espacio_baul)) {
     throw new ServiceError(`El espacio ${espacio_baul} del baúl ya está ocupado`, 409);
@@ -220,9 +332,20 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
   try {
     await pool.execute(
       `INSERT INTO domicilio
-         (id_domicilio, telefono_cliente, telefono_domiciliario, id_ubicacion, productos, precio, espacio_baul, foto_productos_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id_domicilio, telefono_cliente, telefonoDomiciliario, id_ubicacion, productos, precio, espacio_baul, foto_productos_url]
+         (id_domicilio, telefono_cliente, telefono_domiciliario, id_ubicacion, productos, precio, espacio_baul, foto_productos_url, latitud_recogida, longitud_recogida)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id_domicilio,
+        telefono_cliente,
+        telefonoDomiciliario,
+        id_ubicacion,
+        productos,
+        precio,
+        espacio_baul,
+        foto_productos_url,
+        latitudRecogida,
+        longitudRecogida,
+      ]
     );
   } catch (err) {
     // Red de seguridad a nivel de base de datos contra la condición de carrera que
@@ -236,6 +359,8 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
     throw err;
   }
 
+  await insertarLineasProducto(id_domicilio, lineas);
+  emitCambio("domicilios:changed");
   return getDomicilioPorId(id_domicilio);
 }
 
@@ -256,22 +381,38 @@ async function recogerDomicilio(id, telefonoDomiciliario, data) {
 
   const espacio_baul = Number(data.espacio_baul);
   if (!ESPACIOS_VALIDOS.includes(espacio_baul)) {
-    throw new ServiceError("espacio_baul debe ser 1, 2 o 3", 400);
+    throw new ServiceError(`espacio_baul debe estar entre 1 y ${ESPACIOS_VALIDOS.length}`, 400);
+  }
+
+  // Mismo punto de partida que en crearDomicilio — acá es donde estaba el
+  // domiciliario al recoger un domicilio que le asignó el Admin.
+  const latitudRecogida = Number(data.ubicacion_recogida?.latitud);
+  const longitudRecogida = Number(data.ubicacion_recogida?.longitud);
+  if (!Number.isFinite(latitudRecogida) || !Number.isFinite(longitudRecogida)) {
+    throw new ServiceError(
+      "No se pudo capturar tu ubicación GPS. Actívala e intenta de nuevo",
+      400
+    );
   }
 
   const activos = await listActivos(telefonoDomiciliario);
-  if (activos.length >= 3) {
-    throw new ServiceError("Ya tienes 3 domicilios en curso (máximo por carga)", 409);
+  if (activos.length >= ESPACIOS_VALIDOS.length) {
+    throw new ServiceError(
+      `Ya tienes ${ESPACIOS_VALIDOS.length} domicilios en curso (máximo por carga)`,
+      409
+    );
   }
   if (activos.some((d) => d.espacio_baul === espacio_baul)) {
     throw new ServiceError(`El espacio ${espacio_baul} del baúl ya está ocupado`, 409);
   }
 
   try {
-    await pool.execute("UPDATE domicilio SET estado = 'En_curso', espacio_baul = ? WHERE id_domicilio = ?", [
-      espacio_baul,
-      id,
-    ]);
+    await pool.execute(
+      `UPDATE domicilio
+       SET estado = 'En_curso', espacio_baul = ?, latitud_recogida = ?, longitud_recogida = ?
+       WHERE id_domicilio = ?`,
+      [espacio_baul, latitudRecogida, longitudRecogida, id]
+    );
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY") {
       throw new ServiceError("Ese espacio del baúl ya está ocupado por otro domicilio en curso", 409);
@@ -279,6 +420,7 @@ async function recogerDomicilio(id, telefonoDomiciliario, data) {
     throw err;
   }
 
+  emitCambio("domicilios:changed");
   return getDomicilioPorId(id);
 }
 
@@ -304,6 +446,7 @@ async function actualizarDomicilio(id, data) {
     precio,
     id,
   ]);
+  emitCambio("domicilios:changed");
   return getDomicilioPorId(id);
 }
 
@@ -366,15 +509,38 @@ async function marcarEntregado(id, telefonoDomiciliario, data) {
   const domicilioActivo = await getDomicilioActivoDeDomiciliario(id, telefonoDomiciliario);
 
   const metodo_pago = data.metodo_pago;
-  const valor_recaudado = Number(data.valor_recaudado);
-  const distancia_km = data.distancia_km != null ? Number(data.distancia_km) : null;
-
   if (!METODOS_PAGO_VALIDOS.includes(metodo_pago)) {
     throw new ServiceError("metodo_pago inválido", 400);
   }
-  if (!Number.isFinite(valor_recaudado) || valor_recaudado <= 0) {
-    throw new ServiceError("valor_recaudado debe ser mayor a 0", 400);
+
+  // "Ambos" reparte el cobro entre efectivo y transferencia — el total sale de
+  // sumar las dos partes, no se confía en un valor_recaudado aparte (así no puede
+  // quedar descuadrado). Para un solo método, el monto completo va a esa columna
+  // y la otra queda en 0 — así cualquier reporte que sume valor_efectivo/
+  // valor_transferencia (desglose del Admin, barra del domiciliario) no necesita
+  // casos especiales según el método.
+  let valor_efectivo;
+  let valor_transferencia;
+  if (metodo_pago === "Ambos") {
+    valor_efectivo = Number(data.valor_efectivo);
+    valor_transferencia = Number(data.valor_transferencia);
+    if (
+      !Number.isFinite(valor_efectivo) ||
+      valor_efectivo <= 0 ||
+      !Number.isFinite(valor_transferencia) ||
+      valor_transferencia <= 0
+    ) {
+      throw new ServiceError("Indica cuánto se pagó en efectivo y cuánto por transferencia", 400);
+    }
+  } else {
+    const valorRecaudadoInput = Number(data.valor_recaudado);
+    if (!Number.isFinite(valorRecaudadoInput) || valorRecaudadoInput <= 0) {
+      throw new ServiceError("valor_recaudado debe ser mayor a 0", 400);
+    }
+    valor_efectivo = metodo_pago === "Efectivo" ? valorRecaudadoInput : 0;
+    valor_transferencia = metodo_pago === "Transferencia" ? valorRecaudadoInput : 0;
   }
+  const valor_recaudado = valor_efectivo + valor_transferencia;
 
   const latitudEntrega = Number(data.ubicacion_entrega?.latitud);
   const longitudEntrega = Number(data.ubicacion_entrega?.longitud);
@@ -385,6 +551,21 @@ async function marcarEntregado(id, telefonoDomiciliario, data) {
     );
   }
   const ubicacionEntrega = { latitud: latitudEntrega, longitud: longitudEntrega };
+
+  // Distancia real: Haversine entre el punto de partida guardado al recoger/crear
+  // el domicilio (crearDomicilio/recogerDomicilio) y el punto de llegada de acá —
+  // ya no se confía en ningún valor mandado por el cliente (antes venía de un
+  // tracking en vivo con watchPosition, poco confiable con pantalla bloqueada).
+  // Si el domicilio no tiene punto de partida guardado (uno que ya estaba en
+  // curso antes de este cambio), la distancia queda NULL en vez de fallar la
+  // entrega.
+  const distancia_km =
+    domicilioActivo.latitud_recogida != null && domicilioActivo.longitud_recogida != null
+      ? haversineKm(
+          { latitud: domicilioActivo.latitud_recogida, longitud: domicilioActivo.longitud_recogida },
+          ubicacionEntrega
+        )
+      : null;
 
   // Transacción explícita: si el UPDATE del domicilio falla después de haber
   // creado una ubicación nueva, el rollback deshace ambas cosas — no queda una
@@ -403,12 +584,18 @@ async function marcarEntregado(id, telefonoDomiciliario, data) {
     await conn.execute(
       `UPDATE domicilio
        SET estado = 'Entregado', fecha_hora_entrega = NOW(), metodo_pago = ?,
-           valor_recaudado = ?, distancia_km = ?, id_ubicacion = ?
+           valor_recaudado = ?, valor_efectivo = ?, valor_transferencia = ?,
+           distancia_km = ?, id_ubicacion = ?
        WHERE id_domicilio = ?`,
-      [metodo_pago, valor_recaudado, distancia_km, idUbicacionEntrega, id]
+      [metodo_pago, valor_recaudado, valor_efectivo, valor_transferencia, distancia_km, idUbicacionEntrega, id]
     );
 
     await conn.commit();
+
+    emitCambio("domicilios:changed");
+    // resolverUbicacionEntrega puede haber creado una ubicación nueva para el
+    // cliente (ver arriba) — ClienteDetallePage.js también necesita enterarse.
+    if (esNueva) emitCambio("clientes:changed");
 
     const domicilio = await getDomicilioPorId(id);
     return {
@@ -436,6 +623,7 @@ async function marcarCancelado(id, telefonoDomiciliario, data) {
     "UPDATE domicilio SET estado = 'Cancelado', fecha_hora_entrega = NOW(), motivo_cancelacion = ? WHERE id_domicilio = ?",
     [motivo_cancelacion, id]
   );
+  emitCambio("domicilios:changed");
   return getDomicilioPorId(id);
 }
 
@@ -446,6 +634,8 @@ module.exports = {
   listAsignados,
   listAsignadosTodos,
   listDomiciliarios,
+  listDomiciliariosConTotales,
+  setActivoDomiciliario,
   listHistorial,
   crearDomicilio,
   recogerDomicilio,

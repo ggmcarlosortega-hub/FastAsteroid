@@ -16,3 +16,5 @@ Si existe una comanda real esta sea escaneada desde el entorno del celular y pod
 Para cada domicilio se asignara una ubicación en especifica para asi a la hora de entregar el producto no exista ningún tipo de percance. El baul de la moto cuenta con tres espacios cada uno de forma horizontal, si es posible la foto de los productos a entregar que se podrían tomar desde la información recolectada en la comanda anteriormente usada para obtener el numero de teléfono. Una vez se haya hecho lo anterior se tenga la opción de seleccionar el botón de entregado y en ese momento capturar la ubicación en tiempo real de la persona donde se encuentra ubicada para futuros domicilios a realizar.
 
 
+
+--------------------------------------
