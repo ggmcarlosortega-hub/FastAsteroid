@@ -185,6 +185,49 @@ segundos en despertar con la primera petición — para el negocio esto se nota
 como una demora rara en el primer pedido después de un rato sin uso, no es un
 error. Si eso molesta, la alternativa es un plan pago (barato) que no duerma.
 
+### Backend en Fly.io, paso a paso
+
+`server/Dockerfile` ya está listo (probado localmente con `docker build` +
+`docker run` antes de escribir esto) — arranca en HTTP plano automáticamente
+cuando no encuentra los certificados mkcert de desarrollo (no van a existir en
+Fly), que es exactamente lo que hace falta: Fly termina el HTTPS en su borde y
+reenvía HTTP plano hacia adentro.
+
+1. Instalar el CLI (PowerShell):
+   ```powershell
+   iwr https://fly.io/install.ps1 -useb | iex
+   ```
+2. Iniciar sesión (abre el navegador, crea la cuenta si no existe):
+   ```bash
+   fly auth login
+   ```
+3. Desde la carpeta `server/`:
+   ```bash
+   cd server
+   fly launch
+   ```
+   Va a detectar el `Dockerfile` solo. Durante las preguntas:
+   - Nombre de la app: el que quieras (define la URL: `https://<nombre>.fly.dev`).
+   - Región: la más cercana (`bog` si aparece Bogotá, si no `mia`/Miami).
+   - **Si pregunta por agregar una base de datos Postgres/Redis: decir que NO**
+     — la app usa MySQL externo (Aiven/Railway/etc.), no lo que ofrece Fly.
+   - Al final pregunta si desplegar ya — se puede decir que sí, o correr
+     `fly deploy` después a mano.
+4. Configurar las variables sensibles como *secrets* (no van en ningún archivo
+   del repo):
+   ```bash
+   fly secrets set NODE_ENV=production
+   fly secrets set AUTH_SECRET="el-mismo-valor-de-tu-.env-local"
+   fly secrets set DB_HOST=... DB_PORT=3306 DB_USER=... DB_PASSWORD=... DB_NAME=fasteroid
+   ```
+   (`DB_HOST`/`DB_USER`/etc. son los de tu MySQL alcanzable desde internet —
+   sección de arriba — todavía hay que tenerlo creado en Aiven/Railway/etc.
+   antes de este paso, y correr `server/db/schema.sql` contra esa base para
+   crear las tablas.)
+5. `fly deploy` deja la app corriendo en `https://<nombre>.fly.dev` — esa URL
+   es el valor de `API_URL` y `NEXT_PUBLIC_WS_URL` en Vercel (sección de
+   arriba).
+
 ### Cómo diferencia la app a los trabajadores
 
 - Cada trabajador se identifica de forma única por su **número de teléfono**
