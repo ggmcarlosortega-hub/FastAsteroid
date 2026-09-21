@@ -162,6 +162,17 @@ MySQL). La forma real de ponerlo en línea gratis es **partido en 3 piezas**:
 | Servidor (Express) | Render, Railway o Fly.io | Necesita un host que sostenga un proceso persistente (Socket.IO) |
 | MySQL | Aiven, Railway, etc. | Tiene que ser alcanzable desde internet, no `localhost` |
 
+**Despliegue real ya funcionando (verificado de punta a punta):**
+- Frontend: `https://fast-asteroid.vercel.app` (Vercel, rama `main`)
+- Backend: `https://server-shimmering-morning-3971.fly.dev` (Fly.io, región `gru`/São Paulo)
+- Base de datos: MySQL gestionado en Aiven (capa gratis — recordar que la
+  contraseña de los usuarios de prueba sembrados ahí, `admin123`/`domi123`,
+  hay que cambiarla antes de que el negocio la use en serio).
+
+Ambos servicios gratis (Fly y Aiven) pueden "apagarse" tras un rato sin uso y
+tardar unos segundos en responder la primera vez que alguien entra después de
+esa pausa — es esperado, no un error.
+
 El código ya está preparado para esto por variables de entorno — no hace falta
 tocar nada más al desplegar, solo configurarlas:
 

@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { useForm } from "react-hook-form";
 import Swal from "../../lib/swal";
+import LogoMark from "../../components/LogoMark";
 import {
   Phone,
   Lock,
@@ -38,29 +38,6 @@ const FEATURES = [
     texto: "Optimiza tus rutas y entregas.",
   },
 ];
-
-// Dos variantes del logo (fondo claro / fondo oscuro): se alterna con `dark:`
-// según el modo de color del sistema del usuario, igual que el resto de la app.
-function LogoMark({ className = "w-52" }) {
-  return (
-    <div className={`relative ${className}`} style={{ aspectRatio: "788 / 317" }}>
-      <Image
-        src="/fasteroid-negro.png"
-        alt="Fasteroid"
-        fill
-        priority
-        className="object-contain dark:hidden"
-      />
-      <Image
-        src="/fasteroid-blanco.png"
-        alt="Fasteroid"
-        fill
-        priority
-        className="hidden object-contain dark:block"
-      />
-    </div>
-  );
-}
 
 function WaveDecoration({ className }) {
   return (
