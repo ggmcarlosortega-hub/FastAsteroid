@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import {
-  Users,
   Bike,
-  ArrowRight,
   CalendarDays,
   Navigation,
   UserCheck,
@@ -16,26 +14,35 @@ import {
 } from "lucide-react";
 import { useDashboardMensual } from "../logic/useDashboardMensual";
 import GananciasPerdidas from "../../domicilios/components/GananciasPerdidas";
-
-const ACCESOS = [
-  { href: "/admin/clientes", icon: Users, titulo: "Clientes", descripcion: "Alta, edición y ubicaciones" },
-  { href: "/admin/domicilios", icon: Bike, titulo: "Domicilios", descripcion: "En curso, historial y asignación" },
-];
+import BarrasComparativas from "../../../components/charts/BarrasComparativas";
+import BarrasHorizontales from "../../../components/charts/BarrasHorizontales";
 
 // Mismo patrón que ResumenTile en DomiciliarioHomePage.js — componente chico de
 // presentación, se copia acá porque no vale la pena una capa compartida para esto.
+// Color de acento igual al de /login y la landing (#a9787d), no el naranja del
+// resto del panel Admin — este panel es la "cara" administrativa del negocio.
 function Tile({ icon: Icon, label, value }) {
   return (
     <div className="flex flex-col items-center gap-1 rounded-xl border border-zinc-200 bg-white px-3 py-4 text-center dark:border-zinc-800 dark:bg-zinc-900">
-      <Icon size={16} className="text-orange-500" />
+      <Icon size={16} className="text-[#a9787d]" />
       <span className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{value}</span>
       <span className="text-xs text-zinc-500 dark:text-zinc-400">{label}</span>
     </div>
   );
 }
 
+// Mismos tonos de marca que login/landing (#a9787d, #8f6266), variando opacidad
+// para diferenciar hasta 5 productos sin salirse de la paleta establecida.
+const COLORES_TOP_PRODUCTOS = [
+  "bg-[#a9787d]",
+  "bg-[#8f6266]",
+  "bg-[#a9787d]/70",
+  "bg-[#8f6266]/70",
+  "bg-[#a9787d]/45",
+];
+
 export default function DashboardPage() {
-  const { mes, setMes, resumen, alerta, loading } = useDashboardMensual();
+  const { mes, setMes, resumen, alerta, serie, topProductos, loading } = useDashboardMensual();
 
   return (
     <div>
@@ -63,7 +70,7 @@ export default function DashboardPage() {
             type="month"
             value={mes}
             onChange={(e) => setMes(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-[#a9787d] focus:ring-1 focus:ring-[#a9787d] dark:border-zinc-700 dark:bg-zinc-800"
           />
         </label>
       </div>
@@ -72,6 +79,13 @@ export default function DashboardPage() {
 
       {!loading && resumen && (
         <>
+          {/* Comparativa de los últimos 6 meses — clic en un mes mueve el
+              selector de arriba, así todo lo de abajo pasa a mostrar el
+              detalle de ese mes sin duplicar ningún desglose. */}
+          <div className="mt-6">
+            <BarrasComparativas serie={serie} mesSeleccionado={mes} onSelect={setMes} />
+          </div>
+
           {/* Domicilios: reusa GananciasPerdidas.js tal cual (mismo componente que
               /admin/domicilios) + tiles con el resto de indicadores del mes elegido. */}
           <div className="mt-6">
@@ -88,6 +102,19 @@ export default function DashboardPage() {
                 value={resumen.cliente_mas_frecuente ? resumen.cliente_mas_frecuente.nombre : "—"}
               />
             </div>
+            {topProductos && topProductos.length > 0 && (
+              <div className="mt-3">
+                <BarrasHorizontales
+                  titulo="Productos más vendidos"
+                  icon={ShoppingBag}
+                  items={topProductos.map((p, i) => ({
+                    label: p.nombre,
+                    valor: p.cantidad,
+                    color: COLORES_TOP_PRODUCTOS[i % COLORES_TOP_PRODUCTOS.length],
+                  }))}
+                />
+              </div>
+            )}
           </div>
 
           {/* Mantenimiento: indicadores del Bloque 3 (registro_mantenimiento),
@@ -119,25 +146,6 @@ export default function DashboardPage() {
           </div>
         </>
       )}
-
-      <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-        {ACCESOS.map(({ href, icon: Icon, titulo, descripcion }) => (
-          <Link
-            key={href}
-            href={href}
-            className="flex w-fit items-center gap-3 rounded-xl border border-zinc-200 bg-white px-5 py-4 transition-colors hover:border-orange-300 dark:border-zinc-800 dark:bg-zinc-900"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
-              <Icon size={18} />
-            </div>
-            <div>
-              <p className="font-medium text-zinc-900 dark:text-zinc-50">{titulo}</p>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">{descripcion}</p>
-            </div>
-            <ArrowRight size={16} className="ml-4 text-zinc-400" />
-          </Link>
-        ))}
-      </div>
     </div>
   );
 }

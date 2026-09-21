@@ -26,4 +26,29 @@ router.get(
   })
 );
 
+router.get(
+  "/serie",
+  asyncHandler(async (req, res) => {
+    try {
+      const meses = Number(req.query.meses) || 6;
+      const serie = await dashboardService.getSerieMensual(meses);
+      res.json(serie);
+    } catch (err) {
+      sendServiceError(res, err);
+    }
+  })
+);
+
+router.get(
+  "/top-productos",
+  asyncHandler(async (req, res) => {
+    try {
+      const topProductos = await dashboardService.getTopProductosMes(req.query.mes || mesActual());
+      res.json(topProductos);
+    } catch (err) {
+      sendServiceError(res, err);
+    }
+  })
+);
+
 module.exports = router;
