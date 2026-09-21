@@ -1,10 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { Plus, MapPin, Package, Box, Calendar, User, ChevronRight, Inbox } from "lucide-react";
+import {
+  Plus,
+  MapPin,
+  Package,
+  Box,
+  Calendar,
+  User,
+  ChevronRight,
+  Inbox,
+  Download,
+  Printer,
+  CheckCircle2,
+  XCircle,
+  Bike,
+  TrendingUp,
+  BarChart3,
+} from "lucide-react";
 import { useDomiciliosAdmin } from "../logic/useDomiciliosAdmin";
 import GananciasPerdidas from "../components/GananciasPerdidas";
 import DesglosePago from "../components/DesglosePago";
+import BarrasHorizontales from "../../../components/charts/BarrasHorizontales";
+import BarrasSerie from "../../../components/charts/BarrasSerie";
+import { descargarCsv } from "../../../lib/exportCsv";
+
+// Mismo criterio de color que ESTADO_BADGE/GananciasPerdidas (verde=entregado,
+// rojo=cancelado) para que un mismo estado se vea igual en toda la pantalla —
+// ver nota de paleta del plan sobre por qué cada barra también lleva ícono+texto.
+const ESTADO_CHART = {
+  Entregado: { label: "Entregado", color: "bg-green-600", icon: CheckCircle2 },
+  Cancelado: { label: "Cancelado", color: "bg-red-600", icon: XCircle },
+  En_curso: { label: "En curso", color: "bg-orange-500", icon: Bike },
+  Asignado: { label: "En lista de espera", color: "bg-zinc-400", icon: Inbox },
+};
+
+const COLUMNAS_CSV = [
+  { key: "cliente.nombre", label: "Cliente" },
+  { key: "domiciliario.nombre", label: "Domiciliario" },
+  { key: "estado", label: "Estado" },
+  { key: "fecha_hora_creacion", label: "Fecha de creación" },
+  { key: "precio", label: "Precio" },
+  { key: "distancia_km", label: "Distancia (km)" },
+  { key: "metodo_pago", label: "Método de pago" },
+];
 
 const ESTADO_BADGE = {
   En_curso: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
@@ -25,6 +64,8 @@ export default function AdminDomiciliosPage() {
     perdidas,
     desglosePago,
     desglosePorDomiciliario,
+    porEstado,
+    ingresosPorDia,
   } = useDomiciliosAdmin();
 
   return (
@@ -119,34 +160,84 @@ export default function AdminDomiciliosPage() {
           el día). Incluye el gráfico de barras (GananciasPerdidas.js) y la
           lista de domicilios cerrados en el período elegido. */}
       <div className="mt-10">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Ganancias, pérdidas e historial
           </h2>
-          <div className="flex gap-1 rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-800">
-            {[
-              { id: "dia", label: "Día" },
-              { id: "semana", label: "Semana" },
-              { id: "mes", label: "Mes" },
-            ].map((opcion) => (
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1 rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-800">
+              {[
+                { id: "dia", label: "Día" },
+                { id: "semana", label: "Semana" },
+                { id: "mes", label: "Mes" },
+              ].map((opcion) => (
+                <button
+                  key={opcion.id}
+                  onClick={() => setPeriodo(opcion.id)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                    periodo === opcion.id
+                      ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+                      : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  {opcion.label}
+                </button>
+              ))}
+            </div>
+            {/* Exportes (Fase 3) — CSV cliente-side sobre el historial ya cargado;
+                PDF vía impresión del navegador (ver .no-print en globals.css). */}
+            <div className="no-print flex gap-1">
               <button
-                key={opcion.id}
-                onClick={() => setPeriodo(opcion.id)}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
-                  periodo === opcion.id
-                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                    : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                }`}
+                onClick={() =>
+                  descargarCsv("domicilios.csv", COLUMNAS_CSV, historial)
+                }
+                title="Exportar CSV"
+                className="flex items-center gap-1 rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
               >
-                {opcion.label}
+                <Download size={13} />
+                CSV
               </button>
-            ))}
+              <button
+                onClick={() => window.print()}
+                title="Exportar PDF"
+                className="flex items-center gap-1 rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                <Printer size={13} />
+                PDF
+              </button>
+            </div>
           </div>
         </div>
 
         <div className="mt-3">
           <GananciasPerdidas ganancias={ganancias} perdidas={perdidas} />
         </div>
+
+        {/* Gráficos de contexto (Fase 3 — PDF con estadísticas): estado de los
+            domicilios del período e ingresos día a día. Como "Exportar PDF" es
+            window.print() sobre esta misma pantalla, quedan incluidos en el PDF
+            sin necesitar una vista aparte. */}
+        {porEstado.length > 0 && (
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <BarrasHorizontales
+              titulo="Domicilios por estado"
+              icon={BarChart3}
+              items={porEstado.map(({ estado, valor }) => ({
+                label: ESTADO_CHART[estado]?.label ?? estado,
+                valor,
+                color: ESTADO_CHART[estado]?.color ?? "bg-zinc-400",
+                icon: ESTADO_CHART[estado]?.icon,
+              }))}
+            />
+            <BarrasSerie
+              titulo="Ingresos por día"
+              icon={TrendingUp}
+              items={ingresosPorDia}
+              color="bg-orange-500"
+              formato={(v) => `$${Math.round(v).toLocaleString("es-CO")}`}
+            />
+          </div>
+        )}
 
         {/* Desglose efectivo/transferencia del período completo — mismo
             componente que usa el domiciliario para su día (DesglosePago.js). */}
@@ -195,7 +286,7 @@ export default function AdminDomiciliosPage() {
                 <p className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
                   <span className="flex items-center gap-1">
                     <User size={11} />
-                    {domicilio.domiciliario.nombre}
+                    {domicilio.domiciliario?.nombre ?? "Sin domiciliario"}
                   </span>
                   <span className="flex items-center gap-1">
                     <Calendar size={11} />

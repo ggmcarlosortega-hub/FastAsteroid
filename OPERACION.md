@@ -150,6 +150,41 @@ domiciliarios crece o esto se vuelve algo frecuente, vale la pena construir una
 pantalla real en el panel de Admin para dar de alta/baja trabajadores sin tocar
 código ni la terminal — es un trabajo aparte, avisame cuando lo quieras.
 
+## 6. Desplegar en producción (Vercel + backend aparte)
+
+Vercel solo ejecuta funciones serverless — no puede alojar el servidor Express
+tal como está (necesita un proceso persistente para Socket.IO y el pool de
+MySQL). La forma real de ponerlo en línea gratis es **partido en 3 piezas**:
+
+| Pieza | Dónde | Notas |
+|---|---|---|
+| Frontend (Next.js) | Vercel | Encaja directo, sin cambios de arquitectura |
+| Servidor (Express) | Render, Railway o Fly.io | Necesita un host que sostenga un proceso persistente (Socket.IO) |
+| MySQL | Aiven, Railway, etc. | Tiene que ser alcanzable desde internet, no `localhost` |
+
+El código ya está preparado para esto por variables de entorno — no hace falta
+tocar nada más al desplegar, solo configurarlas:
+
+**En el backend** (Render/Railway/etc.), además de las que ya tiene `server/.env`
+(`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `AUTH_SECRET`):
+- `NODE_ENV=production` — activa `secure` y `sameSite: "none"` en la cookie de
+  sesión (`server/lib/auth.js`), necesario porque frontend y backend van a
+  quedar en dominios distintos.
+
+**En Vercel** (proyecto del frontend):
+- `API_URL` = URL pública del backend (ej. `https://fasteroid-api.onrender.com`)
+  — el rewrite de `/api/**` en `next.config.mjs` ya lo usa, sin cambios de código.
+- `NEXT_PUBLIC_WS_URL` = la misma URL pública del backend — el navegador se
+  conecta ahí directo para el tiempo real (`Fasteroid/lib/socket.js`), porque ya
+  no se puede adivinar la URL a partir del dominio de la página (antes asumía
+  que front y back compartían dominio, solo con puertos distintos).
+
+**Nota sobre el host gratuito del backend:** las capas gratuitas de Render (y
+similares) "duermen" el servicio tras un rato sin tráfico y tardan unos
+segundos en despertar con la primera petición — para el negocio esto se nota
+como una demora rara en el primer pedido después de un rato sin uso, no es un
+error. Si eso molesta, la alternativa es un plan pago (barato) que no duerma.
+
 ### Cómo diferencia la app a los trabajadores
 
 - Cada trabajador se identifica de forma única por su **número de teléfono**

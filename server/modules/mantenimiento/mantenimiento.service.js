@@ -4,6 +4,9 @@ const { ServiceError } = require("../../lib/service-error");
 const { emitCambio } = require("../../lib/realtime");
 
 const TIPOS_VALIDOS = ["Tanqueo", "Taller", "Compra_Adicional"];
+// Fase 3: cada cuántos km desde el último Taller se avisa que puede tocar una
+// revisión (cambio de aceite, etc.) — umbral genérico, confirmado con el negocio.
+const KM_ALERTA_TALLER = 2000;
 
 function hydrate(row) {
   return {
@@ -101,4 +104,40 @@ async function createRegistro({
   return hydrate(rows[0]);
 }
 
-module.exports = { listRegistros, createRegistro };
+// Fase 3: compara el kilometraje del último registro (de cualquier tipo — un
+// Tanqueo también refleja el kilometraje actual de la moto) contra el del último
+// Taller. Si nunca hubo un Taller registrado, no hay contra qué comparar.
+async function getAlertaPreventiva() {
+  const [actualRows] = await pool.execute(
+    "SELECT kilometraje_actual FROM registro_mantenimiento ORDER BY fecha_hora DESC LIMIT 1"
+  );
+  const [tallerRows] = await pool.execute(
+    "SELECT kilometraje_actual FROM registro_mantenimiento WHERE tipo = 'Taller' ORDER BY fecha_hora DESC LIMIT 1"
+  );
+
+  const km_actual = actualRows[0]?.kilometraje_actual ?? null;
+  const km_ultimo_taller = tallerRows[0]?.kilometraje_actual ?? null;
+
+  if (km_actual == null || km_ultimo_taller == null) {
+    return {
+      debeAlertar: false,
+      km_actual,
+      km_ultimo_taller,
+      km_desde_taller: null,
+      km_restantes: null,
+      umbral_km: KM_ALERTA_TALLER,
+    };
+  }
+
+  const km_desde_taller = km_actual - km_ultimo_taller;
+  return {
+    debeAlertar: km_desde_taller >= KM_ALERTA_TALLER,
+    km_actual,
+    km_ultimo_taller,
+    km_desde_taller,
+    km_restantes: Math.max(KM_ALERTA_TALLER - km_desde_taller, 0),
+    umbral_km: KM_ALERTA_TALLER,
+  };
+}
+
+module.exports = { listRegistros, createRegistro, getAlertaPreventiva };

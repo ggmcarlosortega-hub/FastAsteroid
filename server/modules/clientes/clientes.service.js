@@ -61,11 +61,24 @@ async function getCliente(telefono) {
     throw new ServiceError("Cliente no encontrado", 404);
   }
 
-  const [ubicaciones] = await pool.execute(
-    `SELECT id_ubicacion, telefono_cliente, latitud, longitud, alias_direccion
-     FROM ubicacion WHERE telefono_cliente = ? ORDER BY alias_direccion ASC`,
+  const [ubicacionRows] = await pool.execute(
+    `SELECT u.id_ubicacion, u.telefono_cliente, u.latitud, u.longitud, u.alias_direccion,
+            m.id_municipio, m.nombre AS municipio_nombre, m.recargo_domicilio
+     FROM ubicacion u
+     LEFT JOIN municipio m ON m.id_municipio = u.id_municipio
+     WHERE u.telefono_cliente = ? ORDER BY u.alias_direccion ASC`,
     [telefono]
   );
+  const ubicaciones = ubicacionRows.map((row) => ({
+    id_ubicacion: row.id_ubicacion,
+    telefono_cliente: row.telefono_cliente,
+    latitud: row.latitud,
+    longitud: row.longitud,
+    alias_direccion: row.alias_direccion,
+    municipio: row.id_municipio
+      ? { id_municipio: row.id_municipio, nombre: row.municipio_nombre, recargo_domicilio: Number(row.recargo_domicilio) }
+      : null,
+  }));
 
   return { ...cliente, ubicaciones };
 }
@@ -110,10 +123,11 @@ async function deleteCliente(telefono) {
   emitCambio("clientes:changed");
 }
 
-async function addUbicacion(telefono, { alias_direccion, latitud, longitud }) {
+async function addUbicacion(telefono, { alias_direccion, latitud, longitud, id_municipio }) {
   alias_direccion = alias_direccion?.trim();
   latitud = Number(latitud);
   longitud = Number(longitud);
+  id_municipio = id_municipio || null;
 
   if (!alias_direccion || Number.isNaN(latitud) || Number.isNaN(longitud)) {
     throw new ServiceError("alias_direccion, latitud y longitud son obligatorios", 400);
@@ -126,14 +140,26 @@ async function addUbicacion(telefono, { alias_direccion, latitud, longitud }) {
     throw new ServiceError("Cliente no encontrado", 404);
   }
 
+  let municipio = null;
+  if (id_municipio) {
+    const [municipioRows] = await pool.execute(
+      "SELECT id_municipio, nombre, recargo_domicilio FROM municipio WHERE id_municipio = ?",
+      [id_municipio]
+    );
+    if (!municipioRows[0]) {
+      throw new ServiceError("El municipio indicado no existe", 400);
+    }
+    municipio = { ...municipioRows[0], recargo_domicilio: Number(municipioRows[0].recargo_domicilio) };
+  }
+
   const id_ubicacion = crypto.randomUUID();
   await pool.execute(
-    "INSERT INTO ubicacion (id_ubicacion, telefono_cliente, alias_direccion, latitud, longitud) VALUES (?, ?, ?, ?, ?)",
-    [id_ubicacion, telefono, alias_direccion, latitud, longitud]
+    "INSERT INTO ubicacion (id_ubicacion, telefono_cliente, alias_direccion, latitud, longitud, id_municipio) VALUES (?, ?, ?, ?, ?, ?)",
+    [id_ubicacion, telefono, alias_direccion, latitud, longitud, id_municipio]
   );
 
   emitCambio("clientes:changed");
-  return { id_ubicacion, telefono_cliente: telefono, alias_direccion, latitud, longitud };
+  return { id_ubicacion, telefono_cliente: telefono, alias_direccion, latitud, longitud, municipio };
 }
 
 async function deleteUbicacion(id) {

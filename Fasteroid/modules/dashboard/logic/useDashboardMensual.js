@@ -11,12 +11,17 @@ function mesActual() {
 export function useDashboardMensual() {
   const [mes, setMes] = useState(mesActual());
   const [resumen, setResumen] = useState(null);
+  const [alerta, setAlerta] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const cargar = useCallback(async (m) => {
     setLoading(true);
-    const res = await fetch(`/api/dashboard/resumen?mes=${encodeURIComponent(m)}`);
-    setResumen(await res.json());
+    const [resResumen, resAlerta] = await Promise.all([
+      fetch(`/api/dashboard/resumen?mes=${encodeURIComponent(m)}`),
+      fetch("/api/mantenimiento/alerta"),
+    ]);
+    setResumen(await resResumen.json());
+    setAlerta(await resAlerta.json());
     setLoading(false);
   }, []);
 
@@ -25,8 +30,8 @@ export function useDashboardMensual() {
   }, [mes, cargar]);
 
   // Cualquier domicilio o evento de mantenimiento nuevo puede cambiar los
-  // indicadores del mes elegido.
+  // indicadores del mes elegido, o la alerta preventiva (no depende del mes).
   useRealtime(["domicilios:changed", "mantenimiento:changed"], () => cargar(mes));
 
-  return { mes, setMes, resumen, loading };
+  return { mes, setMes, resumen, alerta, loading };
 }

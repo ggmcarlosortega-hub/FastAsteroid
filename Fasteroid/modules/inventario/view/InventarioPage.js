@@ -1,12 +1,13 @@
 "use client";
 
-import { Package, Truck, ShoppingCart, Boxes, Tag, Plus, Pencil, Trash2, Layers } from "lucide-react";
+import { Package, Truck, ShoppingCart, Boxes, Tag, Plus, Pencil, Trash2, Layers, Camera, Wallet, MapPinned } from "lucide-react";
 import { useInventarioAdmin } from "../logic/useInventarioAdmin";
 
 const TABS = [
   { id: "productos", label: "Productos", icon: Package },
   { id: "categorias", label: "Categorías", icon: Tag },
   { id: "proveedores", label: "Proveedores", icon: Truck },
+  { id: "municipios", label: "Municipios", icon: MapPinned },
   { id: "compras", label: "Compras", icon: ShoppingCart },
   { id: "inventario", label: "Inventario", icon: Boxes },
 ];
@@ -18,8 +19,10 @@ export default function InventarioPage() {
     productos,
     proveedores,
     categorias,
+    municipios,
     lotes,
     inventario,
+    gastoSemanal,
     loading,
     handleNuevoProducto,
     handleEditarProducto,
@@ -30,7 +33,11 @@ export default function InventarioPage() {
     handleNuevaCategoria,
     handleEditarCategoria,
     handleEliminarCategoria,
+    handleNuevoMunicipio,
+    handleEditarMunicipio,
+    handleEliminarMunicipio,
     handleNuevoLote,
+    handleEscanearCompra,
   } = useInventarioAdmin();
 
   return (
@@ -105,6 +112,14 @@ export default function InventarioPage() {
                   </p>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     ${p.precio_venta.toLocaleString("es-CO")}
+                    {" · "}
+                    {p.margen != null ? (
+                      <span className={p.margen >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                        Margen ${Math.round(p.margen).toLocaleString("es-CO")} ({((p.margen / p.precio_venta) * 100).toFixed(0)}%)
+                      </span>
+                    ) : (
+                      <span className="text-zinc-400">Sin costo registrado</span>
+                    )}
                   </p>
                 </div>
                 <button
@@ -210,18 +225,84 @@ export default function InventarioPage() {
         </div>
       )}
 
+      {/* Pestaña "Municipios": recargo de domicilio por municipio — se elige al
+          crear/editar una ubicación (opcional, ver UbicacionFormModal.js y
+          NuevoDomicilioModal.js) para sumarlo al precio sugerido del pedido. */}
+      {!loading && tab === "municipios" && (
+        <div className="mt-4">
+          <div className="flex justify-end">
+            <button
+              onClick={handleNuevoMunicipio}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              <Plus size={16} />
+              Nuevo municipio
+            </button>
+          </div>
+          <div className="mt-3 divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
+            {municipios.length === 0 && (
+              <p className="p-6 text-center text-sm text-zinc-400">
+                No hay municipios registrados todavía — una ubicación sin municipio no tiene recargo.
+              </p>
+            )}
+            {municipios.map((m) => (
+              <div key={m.id_municipio} className="flex items-center justify-between px-5 py-3">
+                <div>
+                  <p className="font-medium text-zinc-900 dark:text-zinc-50">{m.nombre}</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Recargo: ${m.recargo_domicilio.toLocaleString("es-CO")}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleEditarMunicipio(m)}
+                    className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                    title="Editar"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleEliminarMunicipio(m)}
+                    className="rounded-lg p-2 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    title="Eliminar"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Pestaña "Compras": historial de lotes recibidos de proveedores — cada
           uno suma a la columna "Comprado" de la pestaña Inventario. */}
       {!loading && tab === "compras" && (
         <div className="mt-4">
-          <div className="flex justify-end">
-            <button
-              onClick={handleNuevoLote}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
-            >
-              <Plus size={16} />
-              Registrar compra
-            </button>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-300">
+              <Wallet size={14} className="text-orange-500" />
+              Gasto en compras (últimos 7 días):{" "}
+              <span className="font-semibold text-zinc-900 dark:text-zinc-50">
+                ${gastoSemanal.toLocaleString("es-CO")}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleEscanearCompra}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                <Camera size={16} />
+                Escanear factura
+              </button>
+              <button
+                onClick={handleNuevoLote}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+              >
+                <Plus size={16} />
+                Registrar compra
+              </button>
+            </div>
           </div>
           <div className="mt-3 divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
             {lotes.length === 0 && (
@@ -234,6 +315,7 @@ export default function InventarioPage() {
                     {l.producto.nombre}
                     <span className="ml-2 text-xs font-normal text-zinc-500 dark:text-zinc-400">
                       {l.cantidad_comprada} unidades
+                      {l.costo_unitario != null && ` · $${l.costo_unitario.toLocaleString("es-CO")} c/u`}
                     </span>
                   </p>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">

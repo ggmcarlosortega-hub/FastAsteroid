@@ -4,7 +4,7 @@ const { pool } = require("../../db/pool");
 // de domicilios que no están Cancelado — un domicilio cancelado no debería restar
 // del inventario, el producto nunca salió de verdad). LEFT JOIN + COALESCE porque un
 // producto recién creado puede no tener compras ni ventas todavía.
-async function getInventario() {
+async function queryComprasVentas() {
   const [rows] = await pool.execute(`
     SELECT
       p.id_producto,
@@ -28,7 +28,11 @@ async function getInventario() {
     ) ventas ON ventas.id_producto = p.id_producto
     ORDER BY p.nombre ASC
   `);
+  return rows;
+}
 
+async function getInventario() {
+  const rows = await queryComprasVentas();
   return rows.map((r) => ({
     id_producto: r.id_producto,
     nombre: r.nombre,
@@ -40,4 +44,12 @@ async function getInventario() {
   }));
 }
 
-module.exports = { getInventario };
+// Usado para validar ventas (resolverLineasProductos en domicilios.service.js) y
+// para que el selector de productos muestre cuánto queda de cada uno — un producto
+// no debería poder venderse por encima de esto (ver decisión de inventario negativo).
+async function getDisponibleMap() {
+  const rows = await queryComprasVentas();
+  return new Map(rows.map((r) => [r.id_producto, Number(r.comprado) - Number(r.vendido)]));
+}
+
+module.exports = { getInventario, getDisponibleMap };

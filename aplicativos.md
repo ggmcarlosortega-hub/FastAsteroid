@@ -7,10 +7,11 @@
 > **Metodología documental:** estructura de Especificación de Requisitos de Software (ERS) e ingeniería
 > de requerimientos basada en escenarios (casos de uso) y en el comportamiento (diagramas de actividad),
 > según Roger S. Pressman, *Ingeniería del Software: un enfoque práctico*, 7.ª edición, McGraw-Hill.
-> **Versión:** 1.4 (Bloque 4 — dashboard administrativo unificado — implementado: CU-20, RF-45 y RF-48
-> pasan de especificación a "Implementado"; con esto toda la Fase 1 y la Fase 2 del backlog quedan
-> completas, solo resta la Fase 3) · **Fecha:** 2026-09-03 · **Autor:** Equipo Fasteroid (documentado
-> con asistencia de Claude Code)
+> **Versión:** 1.5 (Fase 3 completa: rentabilidad por domicilio, alertas de mantenimiento preventivo y
+> exportes CSV/PDF — RF-49 a RF-51 nuevos; corregido RF-47/Maps, que seguía marcado "Pendiente" pese a
+> estar implementado desde el 2026-08-23. Con esto el planteamiento original completo del proyecto
+> queda implementado) · **Fecha:** 2026-09-04 · **Autor:** Equipo Fasteroid (documentado con asistencia
+> de Claude Code)
 
 ---
 
@@ -43,11 +44,12 @@ proyecto bajo el enfoque de ingeniería de requerimientos de Pressman (7.ª ed.)
 Fasteroid es un sistema web (con una vista optimizada para celular, tipo PWA) que centraliza la gestión
 de domicilios de un negocio de reparto en Carepa, Antioquia. Cubre: autenticación por rol, registro y
 consulta de clientes con sus ubicaciones, ciclo de vida completo de un domicilio (creación, asignación,
-recogida, seguimiento GPS, entrega, cancelación, corrección), un panel administrativo con historial,
-comparación de ganancias/pérdidas y un dashboard mensual unificado, el módulo de mantenimiento del
-vehículo (tanqueos, taller, compras adicionales, rendimiento km/galón), y el escaneo de comandas por
-OCR. Queda fuera del alcance implementado —pero dentro del alcance planeado del proyecto— la navegación
-asistida por mapas (Fase 3, ver sección 9).
+recogida, seguimiento GPS, entrega, cancelación, corrección), navegación con deep link a Google Maps,
+un panel administrativo con historial, comparación de ganancias/pérdidas y un
+dashboard mensual unificado, el módulo de mantenimiento del vehículo (tanqueos, taller, compras
+adicionales, rendimiento km/galón, alertas preventivas), rentabilidad por domicilio, exportes
+descargables (CSV/PDF), y el escaneo de comandas por OCR. Con esto quedan cubiertas las Fases 1, 2 y 3
+completas del planteamiento original (ver sección 9).
 
 ### 1.3 Definiciones, acrónimos y abreviaturas
 
@@ -299,8 +301,11 @@ Cada requisito se identifica como **RF-NN**, con su estado real: **Implementado*
 | RF-44 | El sistema debe calcular el rendimiento del vehículo (km por galón) entre tanqueos consecutivos. | Implementado |
 | RF-45 | El sistema debe presentar un dashboard administrativo con indicadores mensuales (domicilios, km, tanqueos, cliente más frecuente, gastos de combustible y mantenimiento). | Implementado |
 | RF-46 | El sistema debe permitir digitalizar comandas físicas mediante OCR y prellenar el formulario de domicilio con los datos extraídos, editables antes de confirmar. | Implementado |
-| RF-47 | El sistema debe ofrecer una acción de navegación con enlace directo (deep link) a la app de mapas del dispositivo. | Pendiente (Fase 3) |
+| RF-47 | El sistema debe ofrecer una acción de navegación con enlace directo (deep link) a la app de mapas del dispositivo. | Implementado |
 | RF-48 | El sistema debe unificar en el dashboard administrativo los indicadores derivados de domicilios (ganancias/pérdidas, km recorridos, cliente más frecuente) con los derivados de mantenimiento del vehículo (gastos de combustible, gastos de taller/compras, rendimiento km/galón), agrupados por el mismo período mensual — ver sección 7.1. | Implementado |
+| RF-49 | El sistema debe calcular, para cada domicilio entregado, la rentabilidad (precio cobrado menos el costo de gasolina/mantenimiento del período prorrateado por los km recorridos de ese domicilio). | Implementado (Fase 3) |
+| RF-50 | El sistema debe alertar cuando el kilometraje de la moto supera un umbral (2.000 km) desde el último mantenimiento registrado en taller. | Implementado (Fase 3) |
+| RF-51 | El sistema debe permitir exportar el historial de domicilios y de mantenimiento en CSV (compatible con Excel) y en PDF (vía impresión del navegador). | Implementado (Fase 3) |
 
 ### 3.3 Requisitos no funcionales
 
@@ -856,13 +861,15 @@ Fase 1. Estado real al momento de este documento:
 | Bloque 3 | Mantenimiento del vehículo (tanqueos, taller, rendimiento) | ✅ Implementado — `server/modules/mantenimiento/`, `/admin/mantenimiento` (CU-18, CU-19, DA-06) |
 | Bloque 4 | Dashboard administrativo completo | ✅ Implementado — `server/modules/dashboard/`, panel principal del Admin (`/admin`) con selector de mes (RF-45, RF-48, CU-20, ver sección 7.1) |
 | Fase 2 | Escaneo de comandas por OCR | ✅ Implementado — Tesseract.js, `EscanearComandaModal.js`, con autocompletar de cliente por teléfono |
-| Fase 3 | Analítica avanzada, navegación asistida, exportes | ⏳ Pendiente |
+| Fase 3 | Analítica avanzada, navegación asistida, exportes | ✅ Implementado — navegación con deep link a Maps (RF-47), rentabilidad por domicilio (RF-49), alertas de mantenimiento preventivo (RF-50), exportes CSV/PDF (RF-51) |
 
-En síntesis: toda la Fase 1 del backlog (bloques 0 a 4) y la Fase 2 (OCR) están implementadas y
-verificadas — núcleo operativo del negocio, catálogo con categorías, panel de domiciliarios,
-mantenimiento del vehículo y el dashboard administrativo que unifica ambos. Lo único pendiente es la
-Fase 3 (analítica avanzada, navegación asistida por mapas, exportes), diferida desde el planteamiento
-original del proyecto por depender de decisiones de negocio o de servicios externos de pago.
+En síntesis: **todo el planteamiento original del proyecto está implementado y verificado** — Fase 1
+completa (bloques 0 a 4: núcleo operativo del negocio, catálogo con categorías, panel de domiciliarios,
+mantenimiento del vehículo y el dashboard que unifica ambos), Fase 2 (OCR) y Fase 3 (navegación asistida,
+rentabilidad por domicilio, alertas de mantenimiento preventivo, exportes CSV/PDF) — ninguna quedó
+diferida por depender de una API de pago: el dashboard usa GPS + Haversine ya implementado, Maps usa un
+deep link público sin costo, y los exportes usan CSV a mano + impresión del navegador en vez de una
+librería de .xlsx/PDF.
 
 ---
 

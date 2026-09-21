@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, MapPin, Plus, Trash2, Phone, Calendar } from "lucide-react";
 import { useClienteDetalle } from "../logic/useClienteDetalle";
+import MapaUbicacion from "../../../components/MapaUbicacion";
 
 export default function ClienteDetallePage() {
   const { telefono } = useParams();
@@ -78,21 +79,24 @@ export default function ClienteDetallePage() {
           </p>
         )}
         {cliente.ubicaciones.map((ubicacion) => (
-          <div key={ubicacion.id_ubicacion} className="flex items-center justify-between px-5 py-3">
-            <div>
+          <div key={ubicacion.id_ubicacion} className="flex flex-col gap-2 px-5 py-3">
+            <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
                 {ubicacion.alias_direccion}
+                {ubicacion.municipio && (
+                  <span className="ml-1.5 font-normal text-zinc-400">
+                    ({ubicacion.municipio.nombre}, +${ubicacion.municipio.recargo_domicilio.toLocaleString("es-CO")})
+                  </span>
+                )}
               </p>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                {ubicacion.latitud}, {ubicacion.longitud}
-              </p>
+              <button
+                onClick={() => handleEliminarUbicacion(ubicacion)}
+                className="rounded-lg p-2 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+              >
+                <Trash2 size={16} />
+              </button>
             </div>
-            <button
-              onClick={() => handleEliminarUbicacion(ubicacion)}
-              className="rounded-lg p-2 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-            >
-              <Trash2 size={16} />
-            </button>
+            <MapaUbicacion latitud={ubicacion.latitud} longitud={ubicacion.longitud} height={140} />
           </div>
         ))}
       </div>

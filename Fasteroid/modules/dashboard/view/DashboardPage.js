@@ -12,6 +12,7 @@ import {
   Wrench,
   ShoppingBag,
   TrendingUp,
+  AlertTriangle,
 } from "lucide-react";
 import { useDashboardMensual } from "../logic/useDashboardMensual";
 import GananciasPerdidas from "../../domicilios/components/GananciasPerdidas";
@@ -34,10 +35,26 @@ function Tile({ icon: Icon, label, value }) {
 }
 
 export default function DashboardPage() {
-  const { mes, setMes, resumen, loading } = useDashboardMensual();
+  const { mes, setMes, resumen, alerta, loading } = useDashboardMensual();
 
   return (
     <div>
+      {/* Alerta de mantenimiento preventivo (Fase 3) — no depende del mes elegido
+          arriba, siempre refleja el estado actual de la moto. */}
+      {alerta?.debeAlertar && (
+        <Link
+          href="/admin/mantenimiento"
+          className="mb-4 flex items-center gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/30"
+        >
+          <AlertTriangle size={18} className="shrink-0" />
+          <span>
+            La moto lleva <strong>{alerta.km_desde_taller.toLocaleString("es-CO")} km</strong> desde el
+            último mantenimiento en taller (umbral: {alerta.umbral_km.toLocaleString("es-CO")} km) —
+            puede ser hora de una revisión.
+          </span>
+        </Link>
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Panel Admin</h1>
         <label className="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400">

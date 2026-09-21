@@ -1,8 +1,9 @@
 const express = require("express");
 const { asyncHandler } = require("../lib/asyncHandler");
 const { sendServiceError } = require("../lib/service-error");
-const { requireAuth } = require("../lib/middleware/requireAuth");
+const { requireAuth, requireRole } = require("../lib/middleware/requireAuth");
 const domiciliosService = require("../modules/domicilios/domicilios.service");
+const dashboardService = require("../modules/dashboard/dashboard.service");
 
 const router = express.Router();
 
@@ -80,6 +81,21 @@ router.get(
         rol: req.session.rol,
       });
       res.json(domicilio);
+    } catch (err) {
+      sendServiceError(res, err);
+    }
+  })
+);
+
+// Fase 3: cobrado vs. costo de gasolina/mantenimiento prorrateado — solo Admin,
+// solo tiene sentido para un domicilio ya entregado (ver dashboard.service.js).
+router.get(
+  "/:id/rentabilidad",
+  requireRole("Admin"),
+  asyncHandler(async (req, res) => {
+    try {
+      const rentabilidad = await dashboardService.getRentabilidadDomicilio(req.params.id);
+      res.json(rentabilidad);
     } catch (err) {
       sendServiceError(res, err);
     }

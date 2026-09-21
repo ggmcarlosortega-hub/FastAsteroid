@@ -32,10 +32,18 @@ async function verifySessionToken(token) {
 
 async function setSessionCookie(res, payload) {
   const token = await signSession(payload);
+  // "lax" alcanza cuando front y back viven en el mismo dominio (dev local, o
+  // los dos detrás del mismo proxy). En un despliegue partido (ej. frontend en
+  // Vercel, backend en Render/Railway, dominios distintos) el navegador NO manda
+  // una cookie "lax" en la conexión directa del WebSocket a Socket.IO (ver
+  // Fasteroid/lib/socket.js) — ahí hace falta "none", que a su vez exige
+  // "secure". Como "secure" ya depende de NODE_ENV=production, "none" se activa
+  // junto con él: en dev local (HTTP, sin producción) sigue siendo "lax".
+  const produccion = process.env.NODE_ENV === "production";
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: produccion,
+    sameSite: produccion ? "none" : "lax",
     path: "/",
     maxAge: SESSION_MAX_AGE_MS,
   });

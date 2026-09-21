@@ -1,30 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { MapPin, Navigation, Save } from "lucide-react";
+import { MapPin, MapPinned, Save } from "lucide-react";
 import MySwal from "../../../lib/swal";
+import MapaUbicacion from "../../../components/MapaUbicacion";
 
-// Se abre desde el detalle de un cliente (botón "Agregar" en Ubicaciones). Pide
-// coordenadas a mano — a diferencia del flujo de escaneo de comanda, acá no
-// hay captura de GPS automática, se escriben directamente.
+// Se abre desde el detalle de un cliente (botón "Agregar" en Ubicaciones). El
+// punto se marca tocando el mapa — nadie tiene que saber qué es una latitud o
+// una longitud (a diferencia del flujo de escaneo de comanda, acá tampoco hay
+// captura de GPS automática, por eso hace falta elegirlo a mano en el mapa).
 function UbicacionFormContent({ telefonoCliente, onSaved }) {
   const [serverError, setServerError] = useState(null);
+  const [punto, setPunto] = useState(null);
+  const [puntoError, setPuntoError] = useState(null);
+  const [municipios, setMunicipios] = useState([]);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm({ defaultValues: { alias_direccion: "", latitud: "", longitud: "" } });
+  } = useForm({ defaultValues: { alias_direccion: "", id_municipio: "" } });
+
+  // Municipio opcional: una dirección local (Carepa) simplemente no elige
+  // ninguno y queda sin recargo (ver municipios.service.js).
+  useEffect(() => {
+    fetch("/api/municipios")
+      .then((res) => res.json())
+      .then(setMunicipios);
+  }, []);
 
   async function onSubmit(values) {
+    if (!punto) {
+      setPuntoError("Toca el mapa para marcar la ubicación");
+      return;
+    }
     setServerError(null);
     const res = await fetch(`/api/clientes/${telefonoCliente}/ubicaciones`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         alias_direccion: values.alias_direccion,
-        latitud: Number(values.latitud),
-        longitud: Number(values.longitud),
+        latitud: punto.latitud,
+        longitud: punto.longitud,
+        id_municipio: values.id_municipio || null,
       }),
     });
     const data = await res.json();
@@ -54,36 +72,36 @@ function UbicacionFormContent({ telefonoCliente, onSaved }) {
         )}
       </div>
 
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            <Navigation size={14} />
-            Latitud
-          </label>
-          <input
-            type="number"
-            step="any"
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-            {...register("latitud", { required: "Obligatorio" })}
-          />
-          {errors.latitud && (
-            <p className="mt-1 text-xs text-red-500">{errors.latitud.message}</p>
-          )}
-        </div>
-        <div className="flex-1">
-          <label className="mb-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Longitud
-          </label>
-          <input
-            type="number"
-            step="any"
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-            {...register("longitud", { required: "Obligatorio" })}
-          />
-          {errors.longitud && (
-            <p className="mt-1 text-xs text-red-500">{errors.longitud.message}</p>
-          )}
-        </div>
+      <div>
+        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <MapPin size={14} />
+          Toca el mapa para marcar la ubicación
+        </label>
+        <MapaUbicacion
+          onChange={(nuevoPunto) => {
+            setPunto(nuevoPunto);
+            setPuntoError(null);
+          }}
+        />
+        {puntoError && <p className="mt-1 text-xs text-red-500">{puntoError}</p>}
+      </div>
+
+      <div>
+        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <MapPinned size={14} />
+          Municipio (opcional — solo si tiene recargo de domicilio)
+        </label>
+        <select
+          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+          {...register("id_municipio")}
+        >
+          <option value="">Sin municipio (sin recargo)</option>
+          {municipios.map((m) => (
+            <option key={m.id_municipio} value={m.id_municipio}>
+              {m.nombre} (+${m.recargo_domicilio.toLocaleString("es-CO")})
+            </option>
+          ))}
+        </select>
       </div>
 
       {serverError && <p className="text-sm text-red-500">{serverError}</p>}

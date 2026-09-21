@@ -74,4 +74,33 @@ async function getResumenMensual(mes) {
   };
 }
 
-module.exports = { getResumenMensual };
+// Rentabilidad de UN domicilio puntual: cobrado (precio) menos el costo de
+// gasolina/mantenimiento prorrateado por los km que recorrió, usando el costo
+// por km del mes en que se entregó (mismos gastos ya agregados por
+// getResumenMensual — sin SQL nueva). Solo tiene sentido para domicilios ya
+// entregados (con distancia_km conocida); para cualquier otro estado devuelve null.
+async function getRentabilidadDomicilio(id) {
+  const domicilio = await domiciliosService.getDomicilio(id, { rol: "Admin", telefono: null });
+  if (domicilio.estado !== "Entregado" || domicilio.distancia_km == null) {
+    return null;
+  }
+
+  const fecha = new Date(domicilio.fecha_hora_entrega);
+  const mes = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}`;
+  const resumen = await getResumenMensual(mes);
+
+  const costo_por_km_del_mes =
+    resumen.km_recorridos > 0
+      ? (resumen.gasto_combustible + resumen.gasto_taller_compras) / resumen.km_recorridos
+      : 0;
+  const costo_prorrateado = domicilio.distancia_km * costo_por_km_del_mes;
+
+  return {
+    cobrado: domicilio.precio,
+    costo_prorrateado,
+    rentabilidad: domicilio.precio - costo_prorrateado,
+    costo_por_km_del_mes,
+  };
+}
+
+module.exports = { getResumenMensual, getRentabilidadDomicilio };

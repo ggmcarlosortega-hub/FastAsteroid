@@ -29,4 +29,24 @@ router.post(
   })
 );
 
+router.post(
+  "/bulk",
+  asyncHandler(async (req, res) => {
+    try {
+      const lotes = await lotesService.createLotesBulk(req.body ?? {});
+      res.status(201).json(lotes);
+    } catch (err) {
+      sendServiceError(res, err);
+    }
+  })
+);
+
+router.get(
+  "/gasto-semanal",
+  asyncHandler(async (_req, res) => {
+    const total = await lotesService.getGastoSemanal();
+    res.json({ total });
+  })
+);
+
 module.exports = router;

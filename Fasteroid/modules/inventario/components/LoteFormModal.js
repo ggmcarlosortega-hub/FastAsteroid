@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Package, Truck, Hash, Boxes, CalendarClock, Save } from "lucide-react";
+import { Package, Truck, Hash, Boxes, CalendarClock, Save, DollarSign } from "lucide-react";
 import MySwal from "../../../lib/swal";
 
 // Registrar una compra/lote: producto + proveedor + cantidad son obligatorios;
@@ -21,6 +21,7 @@ function LoteFormContent({ productos, proveedores, onSaved }) {
       id_proveedor: "",
       numero_lote: "",
       cantidad_comprada: "",
+      costo_unitario: "",
       fecha_caducidad: "",
     },
   });
@@ -33,6 +34,7 @@ function LoteFormContent({ productos, proveedores, onSaved }) {
       body: JSON.stringify({
         ...values,
         cantidad_comprada: Number(values.cantidad_comprada),
+        costo_unitario: Number(values.costo_unitario),
         fecha_caducidad: values.fecha_caducidad || null,
       }),
     });
@@ -118,6 +120,26 @@ function LoteFormContent({ productos, proveedores, onSaved }) {
         />
         {errors.cantidad_comprada && (
           <p className="mt-1 text-xs text-red-500">{errors.cantidad_comprada.message}</p>
+        )}
+      </div>
+
+      <div>
+        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <DollarSign size={14} />
+          Costo unitario (lo que costó cada unidad en esta compra)
+        </label>
+        <input
+          type="number"
+          min="1"
+          step="any"
+          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+          {...register("costo_unitario", {
+            required: "Obligatorio",
+            min: { value: 0.01, message: "Debe ser mayor a 0" },
+          })}
+        />
+        {errors.costo_unitario && (
+          <p className="mt-1 text-xs text-red-500">{errors.costo_unitario.message}</p>
         )}
       </div>
 

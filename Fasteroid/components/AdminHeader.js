@@ -25,7 +25,7 @@ export default function AdminHeader({ nombre }) {
   }
 
   return (
-    <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+    <header className="no-print flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
       {/* Logo + menú de navegación del Admin — agregar un link nuevo acá si se
           crea otra sección del panel (mismo patrón: icono + texto). */}
       <div className="flex items-center gap-6">

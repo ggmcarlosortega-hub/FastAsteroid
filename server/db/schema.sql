@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS domicilio_producto;
 DROP TABLE IF EXISTS lote_compra;
 DROP TABLE IF EXISTS domicilio;
 DROP TABLE IF EXISTS ubicacion;
+DROP TABLE IF EXISTS municipio;
 DROP TABLE IF EXISTS registro_mantenimiento;
 DROP TABLE IF EXISTS cliente;
 DROP TABLE IF EXISTS producto;
@@ -64,15 +65,32 @@ CREATE TABLE proveedor (
   fecha_creacion  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Catálogo de municipios con recargo de domicilio — un municipio distinto al
+-- del negocio (Carepa) puede costar más entregarlo; el recargo se suma al
+-- precio sugerido al crear un domicilio a una ubicación con municipio (ver
+-- NuevoDomicilioModal.js). No aparece Carepa en esta tabla: una ubicación sin
+-- municipio asignado (id_municipio NULL) es simplemente "sin recargo".
+CREATE TABLE municipio (
+  id_municipio      CHAR(36)      PRIMARY KEY,
+  nombre            VARCHAR(255)  NOT NULL UNIQUE,
+  recargo_domicilio DECIMAL(10,2) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE ubicacion (
   id_ubicacion     CHAR(36)     PRIMARY KEY,
   telefono_cliente VARCHAR(20)  NOT NULL,
   latitud          DOUBLE       NOT NULL,
   longitud         DOUBLE       NOT NULL,
   alias_direccion  VARCHAR(255) NOT NULL,
+  -- Opcional a propósito: una dirección local (Carepa) no necesita municipio ni
+  -- recargo — así un pedido simple no obliga a elegir nada acá.
+  id_municipio     CHAR(36)     NULL,
   CONSTRAINT ubicacion_telefono_cliente_fkey
     FOREIGN KEY (telefono_cliente) REFERENCES cliente(telefono)
-    ON DELETE CASCADE ON UPDATE CASCADE
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT ubicacion_municipio_fkey
+    FOREIGN KEY (id_municipio) REFERENCES municipio(id_municipio)
+    ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- estado: 'Asignado' (creado por el Admin, en la lista de espera compartida — sin
@@ -153,6 +171,11 @@ CREATE TABLE lote_compra (
   id_proveedor       CHAR(36)      NOT NULL,
   numero_lote        VARCHAR(100)  NULL,
   cantidad_comprada  INT           NOT NULL,
+  -- Lo que costó cada unidad en ESTA compra (no el precio de venta) — alimenta el
+  -- margen de ganancia del producto (precio_venta - costo promedio ponderado de sus
+  -- lotes). NULL en lotes viejos de antes de este campo; obligatorio de acá en
+  -- adelante (ver createLote/createLotesBulk en lotes.service.js).
+  costo_unitario     DECIMAL(10,2) NULL,
   fecha_caducidad    DATE          NULL,
   fecha_compra       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT lote_compra_producto_fkey

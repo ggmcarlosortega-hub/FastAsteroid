@@ -7,7 +7,9 @@ import { openProductoFormModal } from "../components/ProductoFormModal";
 import { openProductosBulkFormModal } from "../components/ProductosBulkFormModal";
 import { openProveedorFormModal } from "../components/ProveedorFormModal";
 import { openCategoriaFormModal } from "../components/CategoriaFormModal";
+import { openMunicipioFormModal } from "../components/MunicipioFormModal";
 import { openLoteFormModal } from "../components/LoteFormModal";
+import { openEscanearCompraModal } from "../components/EscanearCompraModal";
 
 async function toastGuardado(titulo) {
   await Swal.fire({
@@ -25,24 +27,31 @@ export function useInventarioAdmin() {
   const [productos, setProductos] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [categorias, setCategorias] = useState([]);
+  const [municipios, setMunicipios] = useState([]);
   const [lotes, setLotes] = useState([]);
   const [inventario, setInventario] = useState([]);
+  const [gastoSemanal, setGastoSemanal] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const cargar = useCallback(async () => {
     setLoading(true);
-    const [productosRes, proveedoresRes, categoriasRes, lotesRes, inventarioRes] = await Promise.all([
-      fetch("/api/productos"),
-      fetch("/api/proveedores"),
-      fetch("/api/categorias"),
-      fetch("/api/lotes"),
-      fetch("/api/inventario"),
-    ]);
+    const [productosRes, proveedoresRes, categoriasRes, municipiosRes, lotesRes, inventarioRes, gastoSemanalRes] =
+      await Promise.all([
+        fetch("/api/productos"),
+        fetch("/api/proveedores"),
+        fetch("/api/categorias"),
+        fetch("/api/municipios"),
+        fetch("/api/lotes"),
+        fetch("/api/inventario"),
+        fetch("/api/lotes/gasto-semanal"),
+      ]);
     setProductos(await productosRes.json());
     setProveedores(await proveedoresRes.json());
     setCategorias(await categoriasRes.json());
+    setMunicipios(await municipiosRes.json());
     setLotes(await lotesRes.json());
     setInventario(await inventarioRes.json());
+    setGastoSemanal((await gastoSemanalRes.json()).total);
     setLoading(false);
   }, []);
 
@@ -50,10 +59,10 @@ export function useInventarioAdmin() {
     cargar();
   }, [cargar]);
 
-  // Un solo cargar() ya reobtiene los 5 recursos de esta pantalla en
-  // paralelo, así que una sola suscripción cubre todo Inventario.
+  // Un solo cargar() ya reobtiene los recursos de esta pantalla en paralelo,
+  // así que una sola suscripción cubre todo Inventario.
   useRealtime(
-    ["productos:changed", "categorias:changed", "proveedores:changed", "lotes:changed", "domicilios:changed"],
+    ["productos:changed", "categorias:changed", "proveedores:changed", "municipios:changed", "lotes:changed", "domicilios:changed"],
     cargar
   );
 
@@ -150,6 +159,42 @@ export function useInventarioAdmin() {
     cargar();
   }
 
+  async function handleNuevoMunicipio() {
+    const creado = await openMunicipioFormModal();
+    if (!creado) return;
+    await toastGuardado("Municipio creado");
+    cargar();
+  }
+
+  async function handleEditarMunicipio(municipio) {
+    const actualizado = await openMunicipioFormModal(municipio);
+    if (!actualizado) return;
+    await toastGuardado("Municipio actualizado");
+    cargar();
+  }
+
+  async function handleEliminarMunicipio(municipio) {
+    const result = await Swal.fire({
+      icon: "warning",
+      title: `¿Eliminar "${municipio.nombre}"?`,
+      text: "Las ubicaciones que lo tenían quedarán sin municipio — no se borran.",
+      showCancelButton: true,
+      confirmButtonText: "Eliminar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#dc2626",
+    });
+    if (!result.isConfirmed) return;
+
+    const res = await fetch(`/api/municipios/${municipio.id_municipio}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok) {
+      await Swal.fire({ icon: "error", title: "No se pudo eliminar", text: data.error });
+      return;
+    }
+    await toastGuardado("Municipio eliminado");
+    cargar();
+  }
+
   async function handleNuevoLote() {
     if (productos.length === 0) {
       await Swal.fire({
@@ -173,14 +218,39 @@ export function useInventarioAdmin() {
     cargar();
   }
 
+  async function handleEscanearCompra() {
+    if (productos.length === 0) {
+      await Swal.fire({
+        icon: "info",
+        title: "Primero crea un producto",
+        text: "Necesitas al menos un producto en el catálogo para registrar una compra.",
+      });
+      return;
+    }
+    if (proveedores.length === 0) {
+      await Swal.fire({
+        icon: "info",
+        title: "Primero crea un proveedor",
+        text: "Necesitas al menos un proveedor registrado para registrar una compra.",
+      });
+      return;
+    }
+    const creados = await openEscanearCompraModal(productos, proveedores);
+    if (!creados) return;
+    await toastGuardado(`${creados.length} compra(s) registradas`);
+    cargar();
+  }
+
   return {
     tab,
     setTab,
     productos,
     proveedores,
     categorias,
+    municipios,
     lotes,
     inventario,
+    gastoSemanal,
     loading,
     handleNuevoProducto,
     handleEditarProducto,
@@ -191,6 +261,10 @@ export function useInventarioAdmin() {
     handleNuevaCategoria,
     handleEditarCategoria,
     handleEliminarCategoria,
+    handleNuevoMunicipio,
+    handleEditarMunicipio,
+    handleEliminarMunicipio,
     handleNuevoLote,
+    handleEscanearCompra,
   };
 }

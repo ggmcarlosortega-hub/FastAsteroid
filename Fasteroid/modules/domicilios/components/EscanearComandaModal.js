@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import { parseComandaText } from "../logic/comandaParser";
 import { getCurrentPositionAsync } from "../logic/geolocation";
-import { comprimirImagen, rotarImagen } from "../logic/imagenUtil";
+import { comprimirImagen } from "../logic/imagenUtil";
+import { leerMejorTexto } from "../../../lib/ocr";
 import EspacioBaulSelector from "./EspacioBaulSelector";
 import SeleccionProductosPicker from "../../inventario/components/SeleccionProductosPicker";
 import { sumaLineas } from "../../inventario/logic/lineasProductos";
@@ -28,78 +29,12 @@ const VOLVER = Symbol("volver");
 // puede remontar el contenido de un popup abierto y borrar el estado de React de
 // un componente que abarque varios pasos (ver conventions.md).
 
-// Escala de grises simple: ayuda a la lectura de OCR sobre una foto real sin
-// agregar ninguna dependencia. Se probó CON un umbral duro (blanco/negro puro)
-// contra una comanda real fotografiada sobre una mesa metálica con reflejos, y
-// empeoraba mucho el resultado (el brillo desigual del metal hacía que el
-// umbral borrara texto real); se probó sin umbral —solo gris— y el texto
-// reconocible mejoró notablemente (números de teléfono completos, palabras
-// clave como SUBTOTAL/SON legibles). Por eso se dejó solo la conversión a gris.
-function preprocesarImagen(dataUrl) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const datos = imageData.data;
-      for (let i = 0; i < datos.length; i += 4) {
-        const gris = 0.299 * datos[i] + 0.587 * datos[i + 1] + 0.114 * datos[i + 2];
-        datos[i] = datos[i + 1] = datos[i + 2] = gris;
-      }
-      ctx.putImageData(imageData, 0, 0);
-      resolve(canvas);
-    };
-    img.onerror = reject;
-    img.src = dataUrl;
-  });
-}
-
-// Cuando la orientación está muy equivocada, Tesseract no reconoce ningún
-// carácter — pero en vez de dar confianza baja, a veces reporta una confianza
-// ALTA (~95%) por no encontrar nada que dudar, con el texto vacío. Sin filtrar
-// eso, ese resultado "vacío pero seguro" le gana por confianza a la
-// orientación correcta (que sí trae texto real, con su ruido normal). Por eso
-// la confianza de un intento con muy poco texto reconocido se descarta a 0.
-function confianzaValida({ text, confidence }) {
-  return text.trim().length > 20 ? confidence : 0;
-}
-
-async function intentarLectura(worker, dataUrl) {
-  const imagenProcesada = await preprocesarImagen(dataUrl);
-  const { data } = await worker.recognize(imagenProcesada);
-  return { text: data.text, confidence: confianzaValida(data) };
-}
-
-// El domiciliario no siempre toma la foto en vertical y hacia arriba (de
-// cabeza, en horizontal). Se probó usar la confianza del primer intento como
-// señal para decidir si vale la pena probar otras rotaciones, pero una foto
-// realmente al revés puede igual dar una confianza "razonable" (~35-40%,
-// similar a una foto bien orientada con mala luz) mientras el texto es pura
-// basura — la confianza sola no distingue de forma confiable "mala foto" de
-// "ángulo equivocado". Por eso se prueban SIEMPRE las 4 orientaciones y se usa
-// la de mejor confianza; cuesta más tiempo de lectura, pero es la única forma
-// confiable de no depender de que el domiciliario recuerde tomarla derecha.
+// Lectura del OCR (reintento de 4 rotaciones, preprocesado a gris) extraída a
+// lib/ocr.js — es infraestructura genérica, no algo específico de comandas; el
+// nuevo escaneo de facturas de compra (EscanearCompraModal.js) la reutiliza.
 async function leerComanda(dataUrl) {
-  const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("spa");
-  try {
-    await worker.setParameters({ tessedit_pageseg_mode: "4" });
-
-    let mejor = await intentarLectura(worker, dataUrl);
-    for (const grados of [90, 180, 270]) {
-      const girada = await rotarImagen(dataUrl, grados);
-      const intento = await intentarLectura(worker, girada);
-      if (intento.confidence > mejor.confidence) mejor = intento;
-    }
-
-    return parseComandaText(mejor.text);
-  } finally {
-    await worker.terminate();
-  }
+  const texto = await leerMejorTexto(dataUrl);
+  return parseComandaText(texto);
 }
 
 // --- Paso 1: capturar la foto de la comanda y leerla ---
@@ -458,13 +393,11 @@ function UbicacionesStepContent({ cliente, referenciaComanda, onBack, onSelect }
           <button
             key={u.id_ubicacion}
             onClick={() => onSelect(u)}
-            className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
+            className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
           >
+            <MapPin size={14} className="shrink-0 text-zinc-400" />
             <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
               {u.alias_direccion}
-            </span>
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">
-              {u.latitud}, {u.longitud}
             </span>
           </button>
         ))}

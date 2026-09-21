@@ -29,4 +29,11 @@ router.post(
   })
 );
 
+router.get(
+  "/alerta",
+  asyncHandler(async (_req, res) => {
+    res.json(await mantenimientoService.getAlertaPreventiva());
+  })
+);
+
 module.exports = router;

@@ -15,9 +15,12 @@ import {
   AlertCircle,
   Pencil,
   Map,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { useDomicilioDetalle } from "../logic/useDomicilioDetalle";
 import { googleMapsUrl } from "../logic/googleMapsUrl";
+import MapaUbicacion from "../../../components/MapaUbicacion";
 
 const ESTADO_BADGE = {
   Asignado: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
@@ -45,7 +48,7 @@ export default function DomicilioDetallePage() {
   const router = useRouter();
   const pathname = usePathname();
   const esAdmin = pathname.startsWith("/admin");
-  const { domicilio, loading, notFound, handleEditar } = useDomicilioDetalle(id);
+  const { domicilio, rentabilidad, loading, notFound, handleEditar } = useDomicilioDetalle(id, esAdmin);
 
   if (loading) {
     return <p className="text-sm text-zinc-400">Cargando...</p>;
@@ -126,7 +129,8 @@ export default function DomicilioDetallePage() {
         </div>
         <div className="flex items-center justify-between">
           <Dato icon={MapPin} label="Ubicación de entrega">
-            {domicilio.ubicacion.alias_direccion} ({domicilio.ubicacion.latitud}, {domicilio.ubicacion.longitud})
+            {domicilio.ubicacion.alias_direccion}
+            {domicilio.ubicacion.municipio && ` (${domicilio.ubicacion.municipio.nombre})`}
           </Dato>
           <a
             href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
@@ -137,6 +141,9 @@ export default function DomicilioDetallePage() {
             <Map size={13} />
             Maps
           </a>
+        </div>
+        <div className="sm:col-span-2">
+          <MapaUbicacion latitud={domicilio.ubicacion.latitud} longitud={domicilio.ubicacion.longitud} height={200} />
         </div>
         <Dato icon={Package} label="Productos">
           {domicilio.productos}
@@ -182,6 +189,42 @@ export default function DomicilioDetallePage() {
           </div>
         )}
       </div>
+
+      {/* Rentabilidad (Fase 3) — cobrado vs. costo de gasolina/mantenimiento
+          prorrateado por los km de este domicilio, usando el costo por km del mes
+          en que se entregó (ver dashboard.service.js). Solo Admin, solo entregados. */}
+      {rentabilidad && (
+        <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+          <p className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+            {rentabilidad.rentabilidad >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+            Rentabilidad de este domicilio
+          </p>
+          <p
+            className={`mt-1 text-3xl font-semibold ${
+              rentabilidad.rentabilidad >= 0
+                ? "text-green-700 dark:text-green-500"
+                : "text-red-700 dark:text-red-500"
+            }`}
+          >
+            {rentabilidad.rentabilidad >= 0 ? "+" : "−"}$
+            {Math.round(Math.abs(rentabilidad.rentabilidad)).toLocaleString("es-CO")}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-zinc-600 dark:text-zinc-300">
+            <span>
+              Cobrado:{" "}
+              <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                ${rentabilidad.cobrado.toLocaleString("es-CO")}
+              </span>
+            </span>
+            <span>
+              Costo prorrateado (gasolina/mantenimiento):{" "}
+              <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                ${Math.round(rentabilidad.costo_prorrateado).toLocaleString("es-CO")}
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

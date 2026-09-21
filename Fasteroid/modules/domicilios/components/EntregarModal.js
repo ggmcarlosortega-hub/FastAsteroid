@@ -1,8 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Wallet, Banknote, Save } from "lucide-react";
+import { Wallet, Banknote, Save, Receipt } from "lucide-react";
 import MySwal from "../../../lib/swal";
+
+function formatoCOP(valor) {
+  return `$${Math.round(valor).toLocaleString("es-CO")}`;
+}
 
 // Modal que se abre al presionar "Entregado" en un domicilio en curso — pide el
 // método de pago y el valor cobrado. La captura de la ubicación GPS real de la
@@ -13,6 +18,7 @@ function EntregarFormContent({ precioSugerido, onSaved }) {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm({
     defaultValues: {
@@ -26,6 +32,42 @@ function EntregarFormContent({ precioSugerido, onSaved }) {
   // cada método — en vez de mandar un valor_recaudado aparte que podría no
   // cuadrar con la suma (el backend arma el total sumando los dos).
   const esAmbos = watch("metodo_pago") === "Ambos";
+  const valorEfectivo = watch("valor_efectivo");
+  const valorTransferencia = watch("valor_transferencia");
+
+  // Bug real que se corrige acá: antes, al elegir "Ambos", el único recordatorio
+  // de cuánto había que cobrar en total (el "Valor cobrado" sugerido con
+  // precioSugerido) desaparecía por completo — quien entregaba tenía que
+  // acordarse de memoria del precio y no había ningún aviso si la suma de los
+  // dos métodos no cuadraba. Por eso el total del pedido se muestra SIEMPRE,
+  // y cada campo sugiere el resto del otro mientras no se haya tocado a mano
+  // (mismo criterio "sugerido hasta que lo edites" que ya usa el precio en
+  // NuevoDomicilioModal.js).
+  const [efectivoTocado, setEfectivoTocado] = useState(false);
+  const [transferenciaTocado, setTransferenciaTocado] = useState(false);
+
+  function onCambiarEfectivo(e) {
+    setEfectivoTocado(true);
+    const valor = e.target.value;
+    setValue("valor_efectivo", valor);
+    if (!transferenciaTocado && precioSugerido) {
+      const resto = precioSugerido - Number(valor || 0);
+      setValue("valor_transferencia", resto > 0 ? String(resto) : "");
+    }
+  }
+
+  function onCambiarTransferencia(e) {
+    setTransferenciaTocado(true);
+    const valor = e.target.value;
+    setValue("valor_transferencia", valor);
+    if (!efectivoTocado && precioSugerido) {
+      const resto = precioSugerido - Number(valor || 0);
+      setValue("valor_efectivo", resto > 0 ? String(resto) : "");
+    }
+  }
+
+  const sumaAmbos = (Number(valorEfectivo) || 0) + (Number(valorTransferencia) || 0);
+  const sumaCuadra = precioSugerido == null || sumaAmbos === precioSugerido;
 
   function onSubmit(values) {
     if (esAmbos) {
@@ -41,6 +83,13 @@ function EntregarFormContent({ precioSugerido, onSaved }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 text-left">
+      {precioSugerido != null && (
+        <p className="flex items-center gap-1.5 rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+          <Receipt size={14} className="shrink-0 text-zinc-400" />
+          Total del pedido: <span className="font-semibold">{formatoCOP(precioSugerido)}</span>
+        </p>
+      )}
+
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <Wallet size={14} />
@@ -71,6 +120,7 @@ function EntregarFormContent({ precioSugerido, onSaved }) {
               {...register("valor_efectivo", {
                 required: "Obligatorio",
                 min: { value: 1, message: "Debe ser mayor a 0" },
+                onChange: onCambiarEfectivo,
               })}
             />
             {errors.valor_efectivo && (
@@ -90,12 +140,25 @@ function EntregarFormContent({ precioSugerido, onSaved }) {
               {...register("valor_transferencia", {
                 required: "Obligatorio",
                 min: { value: 1, message: "Debe ser mayor a 0" },
+                onChange: onCambiarTransferencia,
               })}
             />
             {errors.valor_transferencia && (
               <p className="mt-1 text-xs text-red-500">{errors.valor_transferencia.message}</p>
             )}
           </div>
+          {/* Aviso, no bloqueo — mismo criterio que ya permite que un solo
+              método cobre algo distinto al precio si se negoció otra cosa. */}
+          {(valorEfectivo || valorTransferencia) && (
+            <p
+              className={`text-xs ${
+                sumaCuadra ? "text-zinc-500 dark:text-zinc-400" : "text-amber-600 dark:text-amber-400"
+              }`}
+            >
+              Efectivo + Transferencia = {formatoCOP(sumaAmbos)}
+              {!sumaCuadra && ` (no coincide con el total de ${formatoCOP(precioSugerido)})`}
+            </p>
+          )}
         </>
       ) : (
         <div>

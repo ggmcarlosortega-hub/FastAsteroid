@@ -82,6 +82,9 @@ export function useDomiciliosAdmin() {
   // domiciliario" debajo del desglose general.
   const desglosePorDomiciliarioMap = new Map();
   for (const d of entregados) {
+    // Un domicilio entregado siempre debería tener domiciliario, pero por si
+    // queda alguno viejo/inconsistente en la base, no se rompe la pantalla por eso.
+    if (!d.domiciliario) continue;
     const key = d.domiciliario.telefono;
     const actual = desglosePorDomiciliarioMap.get(key) ?? {
       telefono: key,
@@ -97,6 +100,32 @@ export function useDomiciliosAdmin() {
     a.nombre.localeCompare(b.nombre)
   );
 
+  // Conteo de domicilios del período por estado — la vista le pone ícono/color
+  // (mismo criterio que ESTADO_BADGE) al armar el gráfico de barras.
+  const porEstadoMap = new Map();
+  for (const d of historial) {
+    porEstadoMap.set(d.estado, (porEstadoMap.get(d.estado) ?? 0) + 1);
+  }
+  const porEstado = [...porEstadoMap.entries()].map(([estado, valor]) => ({ estado, valor }));
+
+  // Ingresos (precio de los Entregado) agrupados por día calendario LOCAL —
+  // getFullYear/getMonth/getDate (no toISOString, que es UTC) para que el día
+  // coincida con el que ya se muestra en el resto de la app vía toLocaleString.
+  const ingresosPorDiaMap = new Map();
+  for (const d of entregados) {
+    const fecha = new Date(d.fecha_hora_creacion);
+    const clave = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}-${String(
+      fecha.getDate()
+    ).padStart(2, "0")}`;
+    ingresosPorDiaMap.set(clave, (ingresosPorDiaMap.get(clave) ?? 0) + (d.precio ?? 0));
+  }
+  const ingresosPorDia = [...ingresosPorDiaMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([clave, valor]) => {
+      const [, mes, dia] = clave.split("-");
+      return { label: `${dia}/${mes}`, valor };
+    });
+
   return {
     activos,
     asignados,
@@ -109,5 +138,7 @@ export function useDomiciliosAdmin() {
     perdidas,
     desglosePago,
     desglosePorDomiciliario,
+    porEstado,
+    ingresosPorDia,
   };
 }

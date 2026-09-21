@@ -2,8 +2,11 @@ const crypto = require("crypto");
 const { pool } = require("../../db/pool");
 const { ServiceError } = require("../../lib/service-error");
 const { emitCambio } = require("../../lib/realtime");
+const inventarioService = require("./inventario.service");
+const lotesService = require("./lotes.service");
 
-function hydrate(row) {
+function hydrate(row, disponibleMap, costoPromedioMap) {
+  const costo_promedio = costoPromedioMap ? costoPromedioMap.get(row.id_producto) ?? null : undefined;
   return {
     id_producto: row.id_producto,
     nombre: row.nombre,
@@ -11,6 +14,14 @@ function hydrate(row) {
     activo: !!row.activo,
     fecha_creacion: row.fecha_creacion,
     categoria: row.id_categoria ? { id_categoria: row.id_categoria, nombre: row.nombre_categoria } : null,
+    // Solo se calcula cuando listProductos() lo pide (ver soloActivos) — el picker de
+    // productos al crear un domicilio lo usa para no dejar vender más de lo que hay.
+    ...(disponibleMap ? { disponible: disponibleMap.get(row.id_producto) ?? 0 } : {}),
+    // costo_promedio es null cuando el producto nunca tuvo una compra costeada — el
+    // margen no se inventa en ese caso (ver getCostoPromedioMap en lotes.service.js).
+    ...(costoPromedioMap
+      ? { costo_promedio, margen: costo_promedio != null ? Number(row.precio_venta) - costo_promedio : null }
+      : {}),
   };
 }
 
@@ -26,8 +37,12 @@ const SELECT_CON_CATEGORIA = `
 // existiendo para no romper el historial de domicilios ya creados con él.
 async function listProductos({ soloActivos = false } = {}) {
   const where = soloActivos ? "WHERE p.activo = TRUE" : "";
-  const [rows] = await pool.execute(`${SELECT_CON_CATEGORIA} ${where} ORDER BY p.nombre ASC`);
-  return rows.map(hydrate);
+  const [[rows], disponibleMap, costoPromedioMap] = await Promise.all([
+    pool.execute(`${SELECT_CON_CATEGORIA} ${where} ORDER BY p.nombre ASC`),
+    inventarioService.getDisponibleMap(),
+    lotesService.getCostoPromedioMap(),
+  ]);
+  return rows.map((row) => hydrate(row, disponibleMap, costoPromedioMap));
 }
 
 async function createProducto({ nombre, precio_venta, id_categoria }) {

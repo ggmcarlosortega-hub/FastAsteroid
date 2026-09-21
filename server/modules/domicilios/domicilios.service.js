@@ -3,6 +3,7 @@ const { pool } = require("../../db/pool");
 const { ServiceError } = require("../../lib/service-error");
 const { haversineKm } = require("../../lib/haversine");
 const { emitCambio } = require("../../lib/realtime");
+const inventarioService = require("../inventario/inventario.service");
 
 // El baúl físico tiene 3 secciones con 3 espacios cada una (ver imagenes/Baul.png
 // en la raíz del repo) — 9 espacios en total, numerados 1-9. Mantener sincronizado
@@ -27,10 +28,12 @@ const SELECT_CON_RELACIONES = `
     c.telefono AS c_telefono, c.nombre AS c_nombre, c.fecha_primer_registro AS c_fecha_primer_registro,
     u.id_ubicacion AS u_id_ubicacion, u.telefono_cliente AS u_telefono_cliente,
     u.latitud AS u_latitud, u.longitud AS u_longitud, u.alias_direccion AS u_alias_direccion,
+    m.id_municipio AS m_id_municipio, m.nombre AS m_nombre, m.recargo_domicilio AS m_recargo_domicilio,
     dom.telefono AS dom_telefono, dom.nombre AS dom_nombre
   FROM domicilio d
   JOIN cliente c ON c.telefono = d.telefono_cliente
   JOIN ubicacion u ON u.id_ubicacion = d.id_ubicacion
+  LEFT JOIN municipio m ON m.id_municipio = u.id_municipio
   LEFT JOIN usuario dom ON dom.telefono = d.telefono_domiciliario
 `;
 
@@ -69,6 +72,9 @@ function hydrate(row) {
       latitud: row.u_latitud,
       longitud: row.u_longitud,
       alias_direccion: row.u_alias_direccion,
+      municipio: row.m_id_municipio
+        ? { id_municipio: row.m_id_municipio, nombre: row.m_nombre, recargo_domicilio: Number(row.m_recargo_domicilio) }
+        : null,
     },
     // NULL mientras el domicilio está en la lista de espera compartida, sin tomar
     // todavía por ningún domiciliario (ver comentario de la tabla en schema.sql).
@@ -226,6 +232,22 @@ async function resolverLineasProductos(productosLineas) {
       precio_unitario: Number(producto.precio_venta),
       nombre: producto.nombre,
     });
+  }
+
+  // No se puede vender más de lo que hay en existencia (comprado - vendido, mismo
+  // cálculo que la pantalla de Inventario). Se suma por id_producto por si el
+  // catálogo trae la misma línea repetida, para no dejar pasar el total.
+  const disponibleMap = await inventarioService.getDisponibleMap();
+  const cantidadPorProducto = new Map();
+  for (const l of lineas) {
+    cantidadPorProducto.set(l.id_producto, (cantidadPorProducto.get(l.id_producto) ?? 0) + l.cantidad);
+  }
+  for (const [id_producto, cantidadPedida] of cantidadPorProducto) {
+    const disponible = disponibleMap.get(id_producto) ?? 0;
+    if (cantidadPedida > disponible) {
+      const nombre = lineas.find((l) => l.id_producto === id_producto).nombre;
+      throw new ServiceError(`Solo quedan ${Math.max(disponible, 0)} unidades de "${nombre}"`, 400);
+    }
   }
 
   const productos = lineas.map((l) => `${l.cantidad}x ${l.nombre}`).join(", ");

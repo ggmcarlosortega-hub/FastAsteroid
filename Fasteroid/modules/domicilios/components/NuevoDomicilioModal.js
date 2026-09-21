@@ -9,7 +9,6 @@ import {
   Phone,
   MapPin,
   Plus,
-  Navigation,
   Camera,
   Banknote,
   ArrowLeft,
@@ -19,6 +18,7 @@ import { comprimirImagen } from "../logic/imagenUtil";
 import EspacioBaulSelector from "./EspacioBaulSelector";
 import SeleccionProductosPicker from "../../inventario/components/SeleccionProductosPicker";
 import { sumaLineas } from "../../inventario/logic/lineasProductos";
+import MapaUbicacion from "../../../components/MapaUbicacion";
 import MySwal from "../../../lib/swal";
 
 // Cada paso del wizard es su PROPIO Swal.fire independiente, encadenado con
@@ -194,11 +194,14 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
   const [ubicaciones, setUbicaciones] = useState(null);
   const [crearNueva, setCrearNueva] = useState(false);
   const [serverError, setServerError] = useState(null);
+  const [punto, setPunto] = useState(null);
+  const [puntoError, setPuntoError] = useState(null);
+  const [municipios, setMunicipios] = useState([]);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm({ defaultValues: { alias_direccion: "", latitud: "", longitud: "" } });
+  } = useForm({ defaultValues: { alias_direccion: "", id_municipio: "" } });
 
   useEffect(() => {
     fetch(`/api/clientes/${cliente.telefono}`)
@@ -206,15 +209,28 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
       .then((data) => setUbicaciones(data.ubicaciones));
   }, [cliente.telefono]);
 
+  // Municipio opcional (ver UbicacionFormModal.js) — al elegirse acá, el paso
+  // de Detalle suma su recargo al precio sugerido (ver DetalleStepContent).
+  useEffect(() => {
+    fetch("/api/municipios")
+      .then((res) => res.json())
+      .then(setMunicipios);
+  }, []);
+
   async function onCrear(values) {
+    if (!punto) {
+      setPuntoError("Toca el mapa para marcar la ubicación");
+      return;
+    }
     setServerError(null);
     const res = await fetch(`/api/clientes/${cliente.telefono}/ubicaciones`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         alias_direccion: values.alias_direccion,
-        latitud: Number(values.latitud),
-        longitud: Number(values.longitud),
+        latitud: punto.latitud,
+        longitud: punto.longitud,
+        id_municipio: values.id_municipio || null,
       }),
     });
     const data = await res.json();
@@ -241,28 +257,36 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
             <p className="mt-1 text-xs text-red-500">{errors.alias_direccion.message}</p>
           )}
         </div>
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              <Navigation size={14} />
-              Latitud
-            </label>
-            <input
-              type="number"
-              step="any"
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-              {...register("latitud", { required: "Obligatorio" })}
-            />
-          </div>
-          <div className="flex-1">
-            <label className="mb-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">Longitud</label>
-            <input
-              type="number"
-              step="any"
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-              {...register("longitud", { required: "Obligatorio" })}
-            />
-          </div>
+        <div>
+          <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <MapPin size={14} />
+            Toca el mapa para marcar la ubicación
+          </label>
+          <MapaUbicacion
+            height={180}
+            onChange={(nuevoPunto) => {
+              setPunto(nuevoPunto);
+              setPuntoError(null);
+            }}
+          />
+          {puntoError && <p className="mt-1 text-xs text-red-500">{puntoError}</p>}
+        </div>
+        <div>
+          <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <MapPin size={14} />
+            Municipio (opcional — solo si tiene recargo de domicilio)
+          </label>
+          <select
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+            {...register("id_municipio")}
+          >
+            <option value="">Sin municipio (sin recargo)</option>
+            {municipios.map((m) => (
+              <option key={m.id_municipio} value={m.id_municipio}>
+                {m.nombre} (+${m.recargo_domicilio.toLocaleString("es-CO")})
+              </option>
+            ))}
+          </select>
         </div>
         {serverError && <p className="text-sm text-red-500">{serverError}</p>}
         <div className="mt-2 flex justify-between gap-2">
@@ -305,14 +329,17 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
           <button
             key={ubicacion.id_ubicacion}
             onClick={() => onSelect(ubicacion)}
-            className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
+            className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
           >
+            <MapPin size={14} className="shrink-0 text-zinc-400" />
             <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
               {ubicacion.alias_direccion}
             </span>
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">
-              {ubicacion.latitud}, {ubicacion.longitud}
-            </span>
+            {ubicacion.municipio && (
+              <span className="text-xs text-zinc-400">
+                ({ubicacion.municipio.nombre}, +${ubicacion.municipio.recargo_domicilio.toLocaleString("es-CO")})
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -371,7 +398,7 @@ function openUbicacionStep(cliente) {
 
 // --- Paso 3: productos, precio, espacio del baúl y foto del pedido ---
 
-function DetalleStepContent({ espaciosOcupados, pedirEspacio, onBack, onSubmit, serverError }) {
+function DetalleStepContent({ espaciosOcupados, pedirEspacio, municipio, onBack, onSubmit, serverError }) {
   const [lineas, setLineas] = useState([]);
   const [lineasError, setLineasError] = useState(null);
   const [precio, setPrecio] = useState("");
@@ -382,14 +409,17 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, onBack, onSubmit, 
   const [espacio, setEspacio] = useState(null);
   const [espacioError, setEspacioError] = useState(null);
 
-  // El precio se sugiere solo (suma cantidad × precio de cada producto elegido)
-  // mientras el domiciliario no lo haya tocado a mano — en cuanto lo edita, deja de
-  // recalcularse para no pisarle un precio negociado con el cliente.
+  const recargo = municipio?.recargo_domicilio ?? 0;
+
+  // El precio se sugiere solo (suma cantidad × precio de cada producto elegido,
+  // más el recargo del municipio de la ubicación si tiene uno) mientras no se
+  // haya tocado a mano — en cuanto se edita, deja de recalcularse para no
+  // pisarle un precio negociado con el cliente.
   function handleLineasChange(nuevasLineas) {
     setLineas(nuevasLineas);
     setLineasError(null);
     if (!precioTocado) {
-      const sugerido = sumaLineas(nuevasLineas);
+      const sugerido = sumaLineas(nuevasLineas) + recargo;
       setPrecio(sugerido > 0 ? String(sugerido) : "");
     }
   }
@@ -443,14 +473,20 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, onBack, onSubmit, 
       {/* Catálogo de productos con cantidad (+/-) — ver SeleccionProductosPicker.js */}
       <SeleccionProductosPicker value={lineas} onChange={handleLineasChange} error={lineasError} />
 
-      {/* Precio total del pedido — se autocompleta al elegir productos (ver
-          handleLineasChange más arriba) pero se puede sobreescribir a mano si se
-          negoció un precio distinto con el cliente. */}
+      {/* Precio total del pedido — se autocompleta al elegir productos, más el
+          recargo del municipio si la ubicación elegida tiene uno (ver
+          handleLineasChange más arriba), pero se puede sobreescribir a mano si
+          se negoció un precio distinto con el cliente. */}
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <Banknote size={14} />
           Precio (valor del pedido)
         </label>
+        {recargo > 0 && (
+          <p className="mb-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Incluye +${recargo.toLocaleString("es-CO")} de recargo por entrega a {municipio.nombre}
+          </p>
+        )}
         <input
           type="number"
           min="1"
@@ -525,7 +561,7 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, onBack, onSubmit, 
   );
 }
 
-function openDetalleStep(espaciosOcupados, serverError, pedirEspacio = true) {
+function openDetalleStep(espaciosOcupados, serverError, pedirEspacio = true, municipio = null) {
   return new Promise((resolve) => {
     let resolved = false;
     MySwal.fire({
@@ -534,6 +570,7 @@ function openDetalleStep(espaciosOcupados, serverError, pedirEspacio = true) {
         <DetalleStepContent
           espaciosOcupados={espaciosOcupados}
           pedirEspacio={pedirEspacio}
+          municipio={municipio}
           serverError={serverError}
           onBack={() => {
             resolved = true;
@@ -585,7 +622,7 @@ export async function openNuevoDomicilioModal(espaciosOcupados, ubicacionRecogid
     }
 
     // paso === "detalle"
-    const resultado = await openDetalleStep(espaciosOcupados, detalleError);
+    const resultado = await openDetalleStep(espaciosOcupados, detalleError, true, ubicacion.municipio);
     if (resultado === VOLVER) {
       detalleError = null;
       paso = "ubicacion";
@@ -648,7 +685,7 @@ export async function openNuevoDomicilioModalAdmin() {
     // paso === "detalle" — el Admin no elige domiciliario ni espacio de baúl: el
     // domicilio queda en la lista de espera compartida, y cualquier domiciliario
     // disponible lo toma después con "Recoger" (ver domicilios.service.js).
-    const resultado = await openDetalleStep([], detalleError, false);
+    const resultado = await openDetalleStep([], detalleError, false, ubicacion.municipio);
     if (resultado === VOLVER) {
       detalleError = null;
       paso = "ubicacion";
