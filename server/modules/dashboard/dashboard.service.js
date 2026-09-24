@@ -80,21 +80,29 @@ const NOMBRES_MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Se
 // Comparativa de los últimos N meses (incluyendo el actual), de más antiguo a
 // más reciente — reusa getResumenMensual() mes a mes, sin repetir SQL, para
 // alimentar la gráfica de barras agrupadas del dashboard.
+//
+// Los 6 meses se piden en paralelo (Promise.all), no uno tras otro: contra una
+// base local el ida-y-vuelta es despreciable, pero contra un MySQL gestionado
+// remoto (Aiven) cada round-trip pesa mucho más, y 6 llamadas secuenciales
+// (cada una con 2+ consultas propias) multiplican esa latencia por 12+. En
+// paralelo, el tiempo total queda limitado por la más lenta, no por la suma.
 async function getSerieMensual(mesesAtras = 6) {
   const ahora = new Date();
-  const serie = [];
+  const meses = [];
   for (let i = mesesAtras - 1; i >= 0; i--) {
     const fecha = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
-    const mes = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}`;
-    const resumen = await getResumenMensual(mes);
-    serie.push({
-      mes,
+    meses.push({
+      mes: `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}`,
       nombreMes: NOMBRES_MES[fecha.getMonth()],
-      ganancias: resumen.ganancias,
-      perdidas: resumen.perdidas,
     });
   }
-  return serie;
+  const resumenes = await Promise.all(meses.map(({ mes }) => getResumenMensual(mes)));
+  return meses.map(({ mes, nombreMes }, i) => ({
+    mes,
+    nombreMes,
+    ganancias: resumenes[i].ganancias,
+    perdidas: resumenes[i].perdidas,
+  }));
 }
 
 // Top de productos por cantidad vendida en domicilios Entregados del mes —
