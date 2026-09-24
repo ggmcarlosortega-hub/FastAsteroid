@@ -3,9 +3,12 @@
 import { useRouter } from "next/navigation";
 import Swal from "../lib/swal";
 import { Rocket, LogOut } from "lucide-react";
+import MobileNavDrawer from "./MobileNavDrawer";
 
 // Más simple que AdminHeader.js a propósito: el domiciliario solo tiene una
-// pantalla (Mis domicilios), así que no hace falta menú de navegación.
+// pantalla (Mis domicilios), así que no hace falta menú de navegación — el
+// drawer de móvil solo colapsa nombre + cerrar sesión, sin `links`, por
+// consistencia con Admin y para no romper si el nombre real es largo.
 export default function DomiciliarioHeader({ nombre }) {
   const router = useRouter();
 
@@ -33,14 +36,15 @@ export default function DomiciliarioHeader({ nombre }) {
       </div>
 
       <div className="flex items-center gap-3 text-sm">
-        <span className="text-zinc-500 dark:text-zinc-400">{nombre}</span>
+        <span className="hidden text-zinc-500 md:inline dark:text-zinc-400">{nombre}</span>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+          className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 md:flex dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
         >
           <LogOut size={15} />
           Salir
         </button>
+        <MobileNavDrawer nombre={nombre} onLogout={handleLogout} />
       </div>
     </header>
   );

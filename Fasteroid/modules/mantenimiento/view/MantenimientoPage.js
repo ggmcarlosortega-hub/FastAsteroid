@@ -42,7 +42,7 @@ export default function MantenimientoPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Mantenimiento</h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
@@ -50,7 +50,7 @@ export default function MantenimientoPage() {
             tanqueos consecutivos.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Exportes (Fase 3) — CSV cliente-side sobre los registros ya
               cargados; PDF vía impresión del navegador (.no-print en globals.css). */}
           <div className="no-print flex gap-1">

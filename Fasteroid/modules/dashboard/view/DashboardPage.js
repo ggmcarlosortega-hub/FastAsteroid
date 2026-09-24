@@ -42,7 +42,7 @@ const COLORES_TOP_PRODUCTOS = [
 ];
 
 export default function DashboardPage() {
-  const { mes, setMes, resumen, alerta, serie, topProductos, loading } = useDashboardMensual();
+  const { mes, setMes, resumen, alerta, serie, topProductos, loading, error, reintentar } = useDashboardMensual();
 
   return (
     <div>
@@ -77,7 +77,20 @@ export default function DashboardPage() {
 
       {loading && <p className="mt-6 text-center text-sm text-zinc-400">Cargando...</p>}
 
-      {!loading && resumen && (
+      {!loading && error && (
+        <div className="mt-6 flex flex-col items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-6 text-center dark:border-red-900/50 dark:bg-red-900/20">
+          <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+          <button
+            type="button"
+            onClick={reintentar}
+            className="mt-1 rounded-full bg-[#a9787d] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#8f6266]"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {!loading && !error && resumen && (
         <>
           {/* Comparativa de los últimos 6 meses — clic en un mes mueve el
               selector de arriba, así todo lo de abajo pasa a mostrar el

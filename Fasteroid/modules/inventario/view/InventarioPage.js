@@ -48,13 +48,18 @@ export default function InventarioPage() {
       </p>
 
       {/* Selector de pestaña — cambia `tab` en el hook, y cada bloque de abajo
-          se muestra solo cuando tab === su propio id (ver TABS arriba). */}
-      <div className="mt-6 flex gap-1 rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-800">
+          se muestra solo cuando tab === su propio id (ver TABS arriba).
+          `flex-1` solo/o a partir de `md`: con las 6 pestañas, en pantallas
+          chicas ese ancho parejo no cabe (los botones no se encogen por
+          debajo de su contenido) — ahí se deja overflow-x-auto y cada botón
+          con su ancho natural, así la fila scrollea en vez de desbordar toda
+          la página. */}
+      <div className="mt-6 flex gap-1 overflow-x-auto rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-800">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium ${
+            className={`flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium md:flex-1 ${
               tab === t.id
                 ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
                 : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"

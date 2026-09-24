@@ -4,6 +4,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Swal from "../lib/swal";
 import { Rocket, Users, Bike, LayoutDashboard, LogOut, Boxes, IdCard, Wrench } from "lucide-react";
+import MobileNavDrawer from "./MobileNavDrawer";
+
+// Mismos links en ambas vistas de la nav (fila horizontal de desktop y el
+// drawer de MobileNavDrawer en móvil) — un solo array evita mantenerlos
+// sincronizados a mano en dos lugares.
+const ADMIN_LINKS = [
+  { href: "/admin", icon: LayoutDashboard, titulo: "Panel" },
+  { href: "/admin/clientes", icon: Users, titulo: "Clientes" },
+  { href: "/admin/domicilios", icon: Bike, titulo: "Domicilios" },
+  { href: "/admin/inventario", icon: Boxes, titulo: "Inventario" },
+  { href: "/admin/domiciliarios", icon: IdCard, titulo: "Domiciliarios" },
+  { href: "/admin/mantenimiento", icon: Wrench, titulo: "Mantenimiento" },
+];
 
 export default function AdminHeader({ nombre }) {
   const router = useRouter();
@@ -33,43 +46,26 @@ export default function AdminHeader({ nombre }) {
           <Rocket size={18} className="text-orange-500" />
           Fasteroid
         </Link>
-        <nav className="flex items-center gap-4 text-sm text-zinc-500 dark:text-zinc-400">
-          <Link href="/admin" className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
-            <LayoutDashboard size={15} />
-            Panel
-          </Link>
-          <Link href="/admin/clientes" className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
-            <Users size={15} />
-            Clientes
-          </Link>
-          <Link href="/admin/domicilios" className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
-            <Bike size={15} />
-            Domicilios
-          </Link>
-          <Link href="/admin/inventario" className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
-            <Boxes size={15} />
-            Inventario
-          </Link>
-          <Link href="/admin/domiciliarios" className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
-            <IdCard size={15} />
-            Domiciliarios
-          </Link>
-          <Link href="/admin/mantenimiento" className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
-            <Wrench size={15} />
-            Mantenimiento
-          </Link>
+        <nav className="hidden items-center gap-4 text-sm text-zinc-500 md:flex dark:text-zinc-400">
+          {ADMIN_LINKS.map(({ href, icon: Icon, titulo }) => (
+            <Link key={href} href={href} className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-zinc-50">
+              <Icon size={15} />
+              {titulo}
+            </Link>
+          ))}
         </nav>
       </div>
 
       <div className="flex items-center gap-3 text-sm">
-        <span className="text-zinc-500 dark:text-zinc-400">{nombre}</span>
+        <span className="hidden text-zinc-500 md:inline dark:text-zinc-400">{nombre}</span>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+          className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 md:flex dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
         >
           <LogOut size={15} />
           Salir
         </button>
+        <MobileNavDrawer links={ADMIN_LINKS} nombre={nombre} onLogout={handleLogout} />
       </div>
     </header>
   );

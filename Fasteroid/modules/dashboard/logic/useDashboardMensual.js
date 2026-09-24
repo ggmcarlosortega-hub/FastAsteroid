@@ -15,26 +15,42 @@ export function useDashboardMensual() {
   const [serie, setSerie] = useState(null);
   const [topProductos, setTopProductos] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
+  // Sin try/catch acá, un fetch fallido (backend reiniciándose, sesión vencida,
+  // el cold-start del backend gratuito en producción) dejaba `loading` en true
+  // para siempre — la pantalla se quedaba en "Cargando..." sin aviso.
   const cargar = useCallback(async (m) => {
     setLoading(true);
-    const [resResumen, resAlerta, resTopProductos] = await Promise.all([
-      fetch(`/api/dashboard/resumen?mes=${encodeURIComponent(m)}`),
-      fetch("/api/mantenimiento/alerta"),
-      fetch(`/api/dashboard/top-productos?mes=${encodeURIComponent(m)}`),
-    ]);
-    setResumen(await resResumen.json());
-    setAlerta(await resAlerta.json());
-    setTopProductos(await resTopProductos.json());
-    setLoading(false);
+    setError(null);
+    try {
+      const [resResumen, resAlerta, resTopProductos] = await Promise.all([
+        fetch(`/api/dashboard/resumen?mes=${encodeURIComponent(m)}`),
+        fetch("/api/mantenimiento/alerta"),
+        fetch(`/api/dashboard/top-productos?mes=${encodeURIComponent(m)}`),
+      ]);
+      setResumen(await resResumen.json());
+      setAlerta(await resAlerta.json());
+      setTopProductos(await resTopProductos.json());
+    } catch {
+      setError("No se pudo cargar el dashboard. Verifica tu conexión e intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // La serie de los últimos 6 meses no depende del mes elegido en el
   // selector (es la comparativa completa) — se carga una sola vez y se
-  // reinvalida con el mismo evento de tiempo real que el resto.
+  // reinvalida con el mismo evento de tiempo real que el resto. Es un
+  // complemento del panel: si falla, no debe tumbar el resto del dashboard
+  // (BarrasComparativas ya maneja `serie` nulo mostrando "Sin datos").
   const cargarSerie = useCallback(async () => {
-    const res = await fetch("/api/dashboard/serie?meses=6");
-    setSerie(await res.json());
+    try {
+      const res = await fetch("/api/dashboard/serie?meses=6");
+      setSerie(await res.json());
+    } catch {
+      // silencioso a propósito — ver comentario arriba.
+    }
   }, []);
 
   useEffect(() => {
@@ -52,5 +68,5 @@ export function useDashboardMensual() {
     cargarSerie();
   });
 
-  return { mes, setMes, resumen, alerta, serie, topProductos, loading };
+  return { mes, setMes, resumen, alerta, serie, topProductos, loading, error, reintentar: () => cargar(mes) };
 }
