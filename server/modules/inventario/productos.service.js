@@ -135,7 +135,11 @@ async function createProductosBulk(lineas) {
     [limpias.map((l) => l.id_producto)]
   );
   emitCambio("productos:changed");
-  return rows.map(hydrate);
+  // OJO: rows.map(hydrate) directo pasa (row, index, array) — hydrate() recibía
+  // el índice como disponibleMap y el arreglo completo como costoPromedioMap,
+  // y como un arreglo es "truthy" entraba a costoPromedioMap.get(...), que no
+  // existe en un Array. Con la arrow function solo se pasa `row`.
+  return rows.map((row) => hydrate(row));
 }
 
 module.exports = { listProductos, createProducto, updateProducto, createProductosBulk };
