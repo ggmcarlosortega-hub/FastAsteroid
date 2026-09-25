@@ -1,7 +1,9 @@
 "use client";
 
+import { Fragment, useState } from "react";
 import { Package, Truck, ShoppingCart, Boxes, Tag, Plus, Pencil, Trash2, Layers, Camera, Wallet, MapPinned } from "lucide-react";
 import { useInventarioAdmin } from "../logic/useInventarioAdmin";
+import { agruparPorCategoria } from "../logic/agruparPorCategoria";
 
 const TABS = [
   { id: "productos", label: "Productos", icon: Package },
@@ -10,6 +12,12 @@ const TABS = [
   { id: "municipios", label: "Municipios", icon: MapPinned },
   { id: "compras", label: "Compras", icon: ShoppingCart },
   { id: "inventario", label: "Inventario", icon: Boxes },
+];
+
+const FILTROS_ACTIVO = [
+  { id: "todos", label: "Todos" },
+  { id: "activos", label: "Activos" },
+  { id: "inactivos", label: "Inactivos" },
 ];
 
 export default function InventarioPage() {
@@ -39,6 +47,16 @@ export default function InventarioPage() {
     handleNuevoLote,
     handleEscanearCompra,
   } = useInventarioAdmin();
+
+  // Solo afecta qué se muestra en la pestaña Productos — no depende del
+  // backend, `productos` ya trae todos con o sin filtro (ver comentario de
+  // la pestaña Productos más abajo).
+  const [filtroActivo, setFiltroActivo] = useState("todos");
+  const productosFiltrados = productos.filter((p) => {
+    if (filtroActivo === "activos") return p.activo;
+    if (filtroActivo === "inactivos") return !p.activo;
+    return true;
+  });
 
   return (
     <div>
@@ -79,64 +97,94 @@ export default function InventarioPage() {
           para no romper domicilios/compras ya registrados con él. */}
       {!loading && tab === "productos" && (
         <div className="mt-4">
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={handleNuevosProductosMasivo}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-            >
-              <Layers size={16} />
-              Agregar varios
-            </button>
-            <button
-              onClick={handleNuevoProducto}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
-            >
-              <Plus size={16} />
-              Nuevo producto
-            </button>
-          </div>
-          <div className="mt-3 divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
-            {productos.length === 0 && (
-              <p className="p-6 text-center text-sm text-zinc-400">No hay productos registrados todavía.</p>
-            )}
-            {productos.map((p) => (
-              <div key={p.id_producto} className="flex items-center justify-between px-5 py-3">
-                <div>
-                  <p className="flex items-center gap-2 font-medium text-zinc-900 dark:text-zinc-50">
-                    {p.nombre}
-                    {!p.activo && (
-                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                        Inactivo
-                      </span>
-                    )}
-                    {p.categoria && (
-                      <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
-                        {p.categoria.nombre}
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    ${p.precio_venta.toLocaleString("es-CO")}
-                    {" · "}
-                    {p.margen != null ? (
-                      <span className={p.margen >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
-                        Margen ${Math.round(p.margen).toLocaleString("es-CO")} ({((p.margen / p.precio_venta) * 100).toFixed(0)}%)
-                      </span>
-                    ) : (
-                      <span className="text-zinc-400">Sin costo registrado</span>
-                    )}
-                  </p>
-                </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* Filtro Todos/Activos/Inactivos — no cambia qué se pide al backend,
+                solo qué parte de `productos` (que ya trae todos) se muestra. Un
+                producto inactivo sigue existiendo para no romper historial, así
+                que encontrarlo entre los activos para reactivarlo (checkbox
+                "Activo" dentro de Editar) era incómodo sin esto. */}
+            <div className="flex gap-1 rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-800">
+              {FILTROS_ACTIVO.map((f) => (
                 <button
-                  onClick={() => handleEditarProducto(p)}
-                  className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-                  title="Editar"
+                  key={f.id}
+                  onClick={() => setFiltroActivo(f.id)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                    filtroActivo === f.id
+                      ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+                      : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  }`}
                 >
-                  <Pencil size={16} />
+                  {f.label}
                 </button>
-              </div>
-            ))}
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleNuevosProductosMasivo}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                <Layers size={16} />
+                Agregar varios
+              </button>
+              <button
+                onClick={handleNuevoProducto}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+              >
+                <Plus size={16} />
+                Nuevo producto
+              </button>
+            </div>
           </div>
+
+          {productosFiltrados.length === 0 && (
+            <div className="mt-3 rounded-xl border border-zinc-200 bg-white p-6 text-center text-sm text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900">
+              {productos.length === 0
+                ? "No hay productos registrados todavía."
+                : "Ningún producto coincide con este filtro."}
+            </div>
+          )}
+
+          {/* Agrupado por categoría (agruparPorCategoria.js) — mismo helper que
+              usa la pestaña Inventario, para que ambas se vean consistentes. */}
+          {agruparPorCategoria(productosFiltrados).map((grupo) => (
+            <div key={grupo.id_categoria ?? "sin-categoria"} className="mt-4 first:mt-3">
+              <h3 className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">{grupo.nombre}</h3>
+              <div className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
+                {grupo.items.map((p) => (
+                  <div key={p.id_producto} className="flex items-center justify-between px-5 py-3">
+                    <div>
+                      <p className="flex items-center gap-2 font-medium text-zinc-900 dark:text-zinc-50">
+                        {p.nombre}
+                        {!p.activo && (
+                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                            Inactivo
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        ${p.precio_venta.toLocaleString("es-CO")}
+                        {" · "}
+                        {p.margen != null ? (
+                          <span className={p.margen >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                            Margen ${Math.round(p.margen).toLocaleString("es-CO")} ({((p.margen / p.precio_venta) * 100).toFixed(0)}%)
+                          </span>
+                        ) : (
+                          <span className="text-zinc-400">Sin costo registrado</span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleEditarProducto(p)}
+                      className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                      title="Editar"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -362,19 +410,31 @@ export default function InventarioPage() {
                   </td>
                 </tr>
               )}
-              {inventario.map((i) => (
-                <tr key={i.id_producto}>
-                  <td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-50">{i.nombre}</td>
-                  <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">{i.comprado}</td>
-                  <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">{i.vendido}</td>
-                  <td
-                    className={`px-5 py-3 font-semibold ${
-                      i.inventario <= 0 ? "text-red-600 dark:text-red-400" : "text-zinc-900 dark:text-zinc-50"
-                    }`}
-                  >
-                    {i.inventario}
-                  </td>
-                </tr>
+              {/* Mismo helper de agrupación que la pestaña Productos — una fila
+                  de encabezado por categoría en vez de un <h3>, ya que acá
+                  estamos dentro de una tabla. */}
+              {agruparPorCategoria(inventario).map((grupo) => (
+                <Fragment key={grupo.id_categoria ?? "sin-categoria"}>
+                  <tr className="bg-zinc-50 dark:bg-zinc-800/50">
+                    <td colSpan={4} className="px-5 py-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                      {grupo.nombre}
+                    </td>
+                  </tr>
+                  {grupo.items.map((i) => (
+                    <tr key={i.id_producto}>
+                      <td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-50">{i.nombre}</td>
+                      <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">{i.comprado}</td>
+                      <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">{i.vendido}</td>
+                      <td
+                        className={`px-5 py-3 font-semibold ${
+                          i.inventario <= 0 ? "text-red-600 dark:text-red-400" : "text-zinc-900 dark:text-zinc-50"
+                        }`}
+                      >
+                        {i.inventario}
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>

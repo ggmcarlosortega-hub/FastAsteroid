@@ -14,6 +14,7 @@ function LoteFormContent({ productos, proveedores, onSaved }) {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm({
     defaultValues: {
@@ -21,20 +22,35 @@ function LoteFormContent({ productos, proveedores, onSaved }) {
       id_proveedor: "",
       numero_lote: "",
       cantidad_comprada: "",
-      costo_unitario: "",
+      precio_lote: "",
       fecha_caducidad: "",
     },
   });
 
+  // El costo por unidad no se pide directo — se pide lo que de verdad trae la
+  // factura (el total pagado por el lote) y se divide acá, en vivo, para que
+  // el usuario vea el resultado antes de guardar.
+  const cantidadObservada = Number(watch("cantidad_comprada"));
+  const precioLoteObservado = Number(watch("precio_lote"));
+  const costoUnitarioCalculado =
+    Number.isFinite(cantidadObservada) && cantidadObservada > 0 &&
+    Number.isFinite(precioLoteObservado) && precioLoteObservado > 0
+      ? precioLoteObservado / cantidadObservada
+      : null;
+
   async function onSubmit(values) {
     setServerError(null);
+    const cantidad_comprada = Number(values.cantidad_comprada);
+    const costo_unitario = Number(values.precio_lote) / cantidad_comprada;
     const res = await fetch("/api/lotes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ...values,
-        cantidad_comprada: Number(values.cantidad_comprada),
-        costo_unitario: Number(values.costo_unitario),
+        id_producto: values.id_producto,
+        id_proveedor: values.id_proveedor,
+        numero_lote: values.numero_lote,
+        cantidad_comprada,
+        costo_unitario,
         fecha_caducidad: values.fecha_caducidad || null,
       }),
     });
@@ -126,20 +142,25 @@ function LoteFormContent({ productos, proveedores, onSaved }) {
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <DollarSign size={14} />
-          Costo unitario (lo que costó cada unidad en esta compra)
+          Precio del lote (lo que pagaste en total por esta compra)
         </label>
         <input
           type="number"
           min="1"
           step="any"
           className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-          {...register("costo_unitario", {
+          {...register("precio_lote", {
             required: "Obligatorio",
             min: { value: 0.01, message: "Debe ser mayor a 0" },
           })}
         />
-        {errors.costo_unitario && (
-          <p className="mt-1 text-xs text-red-500">{errors.costo_unitario.message}</p>
+        {errors.precio_lote && <p className="mt-1 text-xs text-red-500">{errors.precio_lote.message}</p>}
+        {costoUnitarioCalculado != null && (
+          <p className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+            Costo por unidad: <span className="font-medium text-zinc-700 dark:text-zinc-300">
+              ${costoUnitarioCalculado.toLocaleString("es-CO", { maximumFractionDigits: 2 })}
+            </span>
+          </p>
         )}
       </div>
 

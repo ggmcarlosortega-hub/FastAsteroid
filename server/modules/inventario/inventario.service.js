@@ -11,9 +11,12 @@ async function queryComprasVentas() {
       p.nombre,
       p.precio_venta,
       p.activo,
+      c.id_categoria,
+      c.nombre AS nombre_categoria,
       COALESCE(compras.total, 0) AS comprado,
       COALESCE(ventas.total, 0) AS vendido
     FROM producto p
+    LEFT JOIN categoria_producto c ON c.id_categoria = p.id_categoria
     LEFT JOIN (
       SELECT id_producto, SUM(cantidad_comprada) AS total
       FROM lote_compra
@@ -38,6 +41,9 @@ async function getInventario() {
     nombre: r.nombre,
     precio_venta: Number(r.precio_venta),
     activo: !!r.activo,
+    // Mismo shape que hydrate() en productos.service.js — así el mismo
+    // helper de agrupación por categoría del frontend sirve para ambas listas.
+    categoria: r.id_categoria ? { id_categoria: r.id_categoria, nombre: r.nombre_categoria } : null,
     comprado: Number(r.comprado),
     vendido: Number(r.vendido),
     inventario: Number(r.comprado) - Number(r.vendido),
