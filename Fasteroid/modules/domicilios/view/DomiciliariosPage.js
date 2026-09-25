@@ -1,18 +1,29 @@
 "use client";
 
-import { Bike, Phone, Power } from "lucide-react";
+import { Bike, Phone, Power, Plus } from "lucide-react";
 import { useDomiciliarios } from "../logic/useDomiciliarios";
 import DesglosePago from "../components/DesglosePago";
 
 export default function DomiciliariosPage() {
-  const { domiciliarios, loading, handleToggleActivo } = useDomiciliarios();
+  const { domiciliarios, loading, handleToggleActivo, handleNuevoDomiciliario } = useDomiciliarios();
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Domiciliarios</h1>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-        Activa o desactiva domiciliarios y consulta cuánto han recaudado en efectivo y transferencia.
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Domiciliarios</h1>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            Activa o desactiva domiciliarios y consulta cuánto han recaudado en efectivo y transferencia.
+          </p>
+        </div>
+        <button
+          onClick={handleNuevoDomiciliario}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+        >
+          <Plus size={16} />
+          Nuevo domiciliario
+        </button>
+      </div>
 
       {loading && <p className="mt-6 text-center text-sm text-zinc-400">Cargando...</p>}
 

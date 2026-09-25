@@ -23,6 +23,18 @@ router.get(
   })
 );
 
+router.post(
+  "/",
+  asyncHandler(async (req, res) => {
+    try {
+      const domiciliario = await domiciliosService.crearDomiciliario(req.body ?? {});
+      res.status(201).json(domiciliario);
+    } catch (err) {
+      sendServiceError(res, err);
+    }
+  })
+);
+
 router.patch(
   "/:telefono",
   asyncHandler(async (req, res) => {

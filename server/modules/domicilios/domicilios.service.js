@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
 const { pool } = require("../../db/pool");
 const { ServiceError } = require("../../lib/service-error");
 const { haversineKm } = require("../../lib/haversine");
@@ -156,6 +157,39 @@ async function listDomiciliariosConTotales() {
     total_efectivo: Number(row.total_efectivo),
     total_transferencia: Number(row.total_transferencia),
   }));
+}
+
+// Crea la cuenta de un domiciliario nuevo — hoy la única forma de meter un
+// usuario a la tabla `usuario` era db/seed.js, que solo corre una vez al
+// levantar la base. El costo de hash (10) es el mismo que usa seed.js, para
+// que una cuenta creada acá o por el seed sean indistinguibles.
+async function crearDomiciliario({ telefono, nombre, password }) {
+  telefono = telefono?.trim();
+  nombre = nombre?.trim();
+
+  if (!telefono) {
+    throw new ServiceError("El teléfono es obligatorio", 400);
+  }
+  if (!nombre) {
+    throw new ServiceError("El nombre es obligatorio", 400);
+  }
+  if (!password || password.length < 6) {
+    throw new ServiceError("La contraseña debe tener al menos 6 caracteres", 400);
+  }
+
+  const [existente] = await pool.execute("SELECT telefono FROM usuario WHERE telefono = ?", [telefono]);
+  if (existente[0]) {
+    throw new ServiceError("Ya existe un usuario con ese teléfono", 409);
+  }
+
+  const password_hash = await bcrypt.hash(password, 10);
+  await pool.execute(
+    "INSERT INTO usuario (telefono, nombre, password_hash, rol, activo) VALUES (?, ?, ?, 'Domiciliario', TRUE)",
+    [telefono, nombre, password_hash]
+  );
+
+  emitCambio("domiciliarios:changed");
+  return { telefono, nombre, activo: true };
 }
 
 async function setActivoDomiciliario(telefono, activo) {
@@ -679,6 +713,7 @@ module.exports = {
   listAsignadosTodos,
   listDomiciliarios,
   listDomiciliariosConTotales,
+  crearDomiciliario,
   setActivoDomiciliario,
   listHistorial,
   crearDomicilio,

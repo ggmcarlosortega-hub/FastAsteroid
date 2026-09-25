@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Swal from "../../../lib/swal";
 import { useRealtime } from "../../../lib/useRealtime";
+import { openDomiciliarioFormModal } from "../components/DomiciliarioFormModal";
 
 export function useDomiciliarios() {
   const [domiciliarios, setDomiciliarios] = useState([]);
@@ -49,5 +50,19 @@ export function useDomiciliarios() {
     cargar();
   }
 
-  return { domiciliarios, loading, handleToggleActivo };
+  async function handleNuevoDomiciliario() {
+    const creado = await openDomiciliarioFormModal();
+    if (!creado) return;
+    await Swal.fire({
+      toast: true,
+      position: "top-end",
+      icon: "success",
+      title: "Domiciliario creado",
+      timer: 1200,
+      showConfirmButton: false,
+    });
+    cargar();
+  }
+
+  return { domiciliarios, loading, handleToggleActivo, handleNuevoDomiciliario };
 }
