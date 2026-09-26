@@ -2,14 +2,14 @@
 
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Plus, Trash2, Phone, Calendar } from "lucide-react";
+import { ArrowLeft, MapPin, Plus, Pencil, Trash2, Phone, Calendar } from "lucide-react";
 import { useClienteDetalle } from "../logic/useClienteDetalle";
 import MapaUbicacion from "../../../components/MapaUbicacion";
 
 export default function ClienteDetallePage() {
   const { telefono } = useParams();
   const router = useRouter();
-  const { cliente, loading, handleAgregarUbicacion, handleEliminarUbicacion } =
+  const { cliente, loading, handleAgregarUbicacion, handleEditarUbicacion, handleEliminarUbicacion } =
     useClienteDetalle(telefono);
 
   if (loading) {
@@ -89,12 +89,22 @@ export default function ClienteDetallePage() {
                   </span>
                 )}
               </p>
-              <button
-                onClick={() => handleEliminarUbicacion(ubicacion)}
-                className="rounded-lg p-2 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-              >
-                <Trash2 size={16} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handleEditarUbicacion(ubicacion)}
+                  className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                  title="Editar"
+                >
+                  <Pencil size={16} />
+                </button>
+                <button
+                  onClick={() => handleEliminarUbicacion(ubicacion)}
+                  className="rounded-lg p-2 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                  title="Eliminar"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
             <MapaUbicacion latitud={ubicacion.latitud} longitud={ubicacion.longitud} height={140} />
           </div>

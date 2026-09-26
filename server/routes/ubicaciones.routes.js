@@ -6,6 +6,21 @@ const clientesService = require("../modules/clientes/clientes.service");
 
 const router = express.Router();
 
+// Sin requireRole: tanto Admin como Domiciliario necesitan poder corregir el
+// municipio de una ubicación ya guardada (ver GET /api/municipios, mismo criterio).
+router.patch(
+  "/:id",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    try {
+      const ubicacion = await clientesService.updateUbicacion(req.params.id, req.body ?? {});
+      res.json(ubicacion);
+    } catch (err) {
+      sendServiceError(res, err);
+    }
+  })
+);
+
 router.delete(
   "/:id",
   requireAuth,

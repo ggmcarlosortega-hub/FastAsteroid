@@ -41,6 +41,20 @@ export function useClienteDetalle(telefono) {
     cargar();
   }
 
+  async function handleEditarUbicacion(ubicacion) {
+    const actualizada = await openUbicacionFormModal(telefono, ubicacion);
+    if (!actualizada) return;
+    await Swal.fire({
+      toast: true,
+      position: "top-end",
+      icon: "success",
+      title: "Ubicación actualizada",
+      timer: 1200,
+      showConfirmButton: false,
+    });
+    cargar();
+  }
+
   async function handleEliminarUbicacion(ubicacion) {
     const result = await Swal.fire({
       icon: "warning",
@@ -63,5 +77,5 @@ export function useClienteDetalle(telefono) {
     cargar();
   }
 
-  return { cliente, loading, handleAgregarUbicacion, handleEliminarUbicacion };
+  return { cliente, loading, handleAgregarUbicacion, handleEditarUbicacion, handleEliminarUbicacion };
 }

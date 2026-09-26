@@ -10,7 +10,13 @@ import MapaUbicacion from "../../../components/MapaUbicacion";
 // punto se marca tocando el mapa — nadie tiene que saber qué es una latitud o
 // una longitud (a diferencia del flujo de escaneo de comanda, acá tampoco hay
 // captura de GPS automática, por eso hace falta elegirlo a mano en el mapa).
-function UbicacionFormContent({ telefonoCliente, onSaved }) {
+//
+// Modo edición (ubicacion != null): NO se puede volver a tocar el mapa — solo
+// se corrige alias/municipio. Esto tapa el hueco real de que una ubicación ya
+// guardada (creada antes de que existiera "municipio", o sin elegir uno)
+// se quedaba sin poder corregirse — antes solo existía crear o borrar.
+function UbicacionFormContent({ telefonoCliente, ubicacion, onSaved }) {
+  const isEdit = Boolean(ubicacion);
   const [serverError, setServerError] = useState(null);
   const [punto, setPunto] = useState(null);
   const [puntoError, setPuntoError] = useState(null);
@@ -19,7 +25,12 @@ function UbicacionFormContent({ telefonoCliente, onSaved }) {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm({ defaultValues: { alias_direccion: "", id_municipio: "" } });
+  } = useForm({
+    defaultValues: {
+      alias_direccion: ubicacion?.alias_direccion ?? "",
+      id_municipio: ubicacion?.municipio?.id_municipio ?? "",
+    },
+  });
 
   // Municipio opcional: una dirección local (Carepa) simplemente no elige
   // ninguno y queda sin recargo (ver municipios.service.js).
@@ -30,6 +41,25 @@ function UbicacionFormContent({ telefonoCliente, onSaved }) {
   }, []);
 
   async function onSubmit(values) {
+    if (isEdit) {
+      setServerError(null);
+      const res = await fetch(`/api/ubicaciones/${ubicacion.id_ubicacion}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alias_direccion: values.alias_direccion,
+          id_municipio: values.id_municipio || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setServerError(data.error ?? "No se pudo actualizar la ubicación");
+        return;
+      }
+      onSaved(data);
+      return;
+    }
+
     if (!punto) {
       setPuntoError("Toca el mapa para marcar la ubicación");
       return;
@@ -72,19 +102,29 @@ function UbicacionFormContent({ telefonoCliente, onSaved }) {
         )}
       </div>
 
-      <div>
-        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          <MapPin size={14} />
-          Toca el mapa para marcar la ubicación
-        </label>
-        <MapaUbicacion
-          onChange={(nuevoPunto) => {
-            setPunto(nuevoPunto);
-            setPuntoError(null);
-          }}
-        />
-        {puntoError && <p className="mt-1 text-xs text-red-500">{puntoError}</p>}
-      </div>
+      {isEdit ? (
+        <div>
+          <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <MapPin size={14} />
+            Ubicación en el mapa (no editable acá — borra y crea una nueva si quedó mal marcada)
+          </label>
+          <MapaUbicacion latitud={ubicacion.latitud} longitud={ubicacion.longitud} height={140} />
+        </div>
+      ) : (
+        <div>
+          <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <MapPin size={14} />
+            Toca el mapa para marcar la ubicación
+          </label>
+          <MapaUbicacion
+            onChange={(nuevoPunto) => {
+              setPunto(nuevoPunto);
+              setPuntoError(null);
+            }}
+          />
+          {puntoError && <p className="mt-1 text-xs text-red-500">{puntoError}</p>}
+        </div>
+      )}
 
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -127,14 +167,15 @@ function UbicacionFormContent({ telefonoCliente, onSaved }) {
   );
 }
 
-export function openUbicacionFormModal(telefonoCliente) {
+export function openUbicacionFormModal(telefonoCliente, ubicacion = null) {
   return new Promise((resolve) => {
     let resolved = false;
     MySwal.fire({
-      title: "Nueva ubicación",
+      title: ubicacion ? "Editar ubicación" : "Nueva ubicación",
       html: (
         <UbicacionFormContent
           telefonoCliente={telefonoCliente}
+          ubicacion={ubicacion}
           onSaved={(data) => {
             resolved = true;
             resolve(data);

@@ -162,6 +162,47 @@ async function addUbicacion(telefono, { alias_direccion, latitud, longitud, id_m
   return { id_ubicacion, telefono_cliente: telefono, alias_direccion, latitud, longitud, municipio };
 }
 
+// Solo alias y municipio son editables — el punto del mapa no se toca (si
+// quedó mal ubicado, la solución es borrar y crear una nueva, no editar esta).
+// Esto tapa el hueco real: una ubicación creada antes de que existiera
+// "municipio", o sin elegir uno, se quedaba así para siempre porque no había
+// forma de corregirla — solo crear o borrar.
+async function updateUbicacion(id, { alias_direccion, id_municipio }) {
+  alias_direccion = alias_direccion?.trim();
+  id_municipio = id_municipio || null;
+
+  if (!alias_direccion) {
+    throw new ServiceError("alias_direccion es obligatorio", 400);
+  }
+
+  let municipio = null;
+  if (id_municipio) {
+    const [municipioRows] = await pool.execute(
+      "SELECT id_municipio, nombre, recargo_domicilio FROM municipio WHERE id_municipio = ?",
+      [id_municipio]
+    );
+    if (!municipioRows[0]) {
+      throw new ServiceError("El municipio indicado no existe", 400);
+    }
+    municipio = { ...municipioRows[0], recargo_domicilio: Number(municipioRows[0].recargo_domicilio) };
+  }
+
+  const [result] = await pool.execute(
+    "UPDATE ubicacion SET alias_direccion = ?, id_municipio = ? WHERE id_ubicacion = ?",
+    [alias_direccion, id_municipio, id]
+  );
+  if (result.affectedRows === 0) {
+    throw new ServiceError("Ubicación no encontrada", 404);
+  }
+
+  const [rows] = await pool.execute(
+    "SELECT id_ubicacion, telefono_cliente, alias_direccion, latitud, longitud FROM ubicacion WHERE id_ubicacion = ?",
+    [id]
+  );
+  emitCambio("clientes:changed");
+  return { ...rows[0], municipio };
+}
+
 async function deleteUbicacion(id) {
   try {
     const [result] = await pool.execute("DELETE FROM ubicacion WHERE id_ubicacion = ?", [id]);
@@ -184,5 +225,6 @@ module.exports = {
   updateCliente,
   deleteCliente,
   addUbicacion,
+  updateUbicacion,
   deleteUbicacion,
 };

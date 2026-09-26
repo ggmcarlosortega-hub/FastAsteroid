@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import {
   Search,
@@ -8,7 +8,9 @@ import {
   User,
   Phone,
   MapPin,
+  MapPinned,
   Plus,
+  Pencil,
   Camera,
   Banknote,
   ArrowLeft,
@@ -203,11 +205,51 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: { alias_direccion: "", id_municipio: "" } });
 
-  useEffect(() => {
-    fetch(`/api/clientes/${cliente.telefono}`)
+  // Editar el municipio de una ubicación YA guardada, sin salir del asistente
+  // ni volver a tocar el mapa — tapa el hueco real: una dirección creada antes
+  // de que existiera "municipio" (o sin elegir uno) se quedaba así para
+  // siempre, porque nunca se volvía a preguntar al elegirla de esta lista.
+  const [editando, setEditando] = useState(null);
+  const [edicionAlias, setEdicionAlias] = useState("");
+  const [edicionMunicipio, setEdicionMunicipio] = useState("");
+  const [edicionError, setEdicionError] = useState(null);
+  const [edicionEnviando, setEdicionEnviando] = useState(false);
+
+  const cargarUbicaciones = useCallback(() => {
+    return fetch(`/api/clientes/${cliente.telefono}`)
       .then((res) => res.json())
       .then((data) => setUbicaciones(data.ubicaciones));
   }, [cliente.telefono]);
+
+  useEffect(() => {
+    cargarUbicaciones();
+  }, [cargarUbicaciones]);
+
+  function iniciarEdicion(ubicacion) {
+    setEditando(ubicacion);
+    setEdicionAlias(ubicacion.alias_direccion);
+    setEdicionMunicipio(ubicacion.municipio?.id_municipio ?? "");
+    setEdicionError(null);
+  }
+
+  async function guardarEdicion(e) {
+    e.preventDefault();
+    setEdicionEnviando(true);
+    setEdicionError(null);
+    const res = await fetch(`/api/ubicaciones/${editando.id_ubicacion}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alias_direccion: edicionAlias, id_municipio: edicionMunicipio || null }),
+    });
+    const data = await res.json();
+    setEdicionEnviando(false);
+    if (!res.ok) {
+      setEdicionError(data.error ?? "No se pudo actualizar");
+      return;
+    }
+    await cargarUbicaciones();
+    setEditando(null);
+  }
 
   // Municipio opcional (ver UbicacionFormModal.js) — al elegirse acá, el paso
   // de Detalle suma su recargo al precio sugerido (ver DetalleStepContent).
@@ -325,23 +367,79 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
         {ubicaciones?.length === 0 && (
           <p className="p-4 text-center text-sm text-zinc-400">Sin ubicaciones guardadas.</p>
         )}
-        {ubicaciones?.map((ubicacion) => (
-          <button
-            key={ubicacion.id_ubicacion}
-            onClick={() => onSelect(ubicacion)}
-            className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
-          >
-            <MapPin size={14} className="shrink-0 text-zinc-400" />
-            <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
-              {ubicacion.alias_direccion}
-            </span>
-            {ubicacion.municipio && (
-              <span className="text-xs text-zinc-400">
-                ({ubicacion.municipio.nombre}, +${ubicacion.municipio.recargo_domicilio.toLocaleString("es-CO")})
-              </span>
-            )}
-          </button>
-        ))}
+        {ubicaciones?.map((ubicacion) =>
+          editando?.id_ubicacion === ubicacion.id_ubicacion ? (
+            <form
+              key={ubicacion.id_ubicacion}
+              onSubmit={guardarEdicion}
+              className="flex flex-col gap-2 bg-zinc-50 px-4 py-3 dark:bg-zinc-800/60"
+            >
+              <input
+                value={edicionAlias}
+                onChange={(e) => setEdicionAlias(e.target.value)}
+                placeholder="Alias / dirección"
+                className="w-full rounded-lg border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+              <select
+                value={edicionMunicipio}
+                onChange={(e) => setEdicionMunicipio(e.target.value)}
+                className="w-full rounded-lg border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-900"
+              >
+                <option value="">Sin municipio (sin recargo)</option>
+                {municipios.map((m) => (
+                  <option key={m.id_municipio} value={m.id_municipio}>
+                    {m.nombre} (+${m.recargo_domicilio.toLocaleString("es-CO")})
+                  </option>
+                ))}
+              </select>
+              {edicionError && <p className="text-xs text-red-500">{edicionError}</p>}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditando(null)}
+                  className="rounded-lg px-3 py-1.5 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={edicionEnviando}
+                  className="inline-flex items-center gap-1 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-60 dark:bg-white dark:text-zinc-900"
+                >
+                  <Save size={12} />
+                  Guardar
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div
+              key={ubicacion.id_ubicacion}
+              className="flex w-full items-center gap-1 px-2 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            >
+              <button
+                onClick={() => onSelect(ubicacion)}
+                className="flex flex-1 items-center gap-2 px-2 py-1.5 text-left"
+              >
+                <MapPin size={14} className="shrink-0 text-zinc-400" />
+                <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                  {ubicacion.alias_direccion}
+                </span>
+                {ubicacion.municipio && (
+                  <span className="text-xs text-zinc-400">
+                    ({ubicacion.municipio.nombre}, +${ubicacion.municipio.recargo_domicilio.toLocaleString("es-CO")})
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => iniciarEdicion(ubicacion)}
+                className="shrink-0 rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+                title={ubicacion.municipio ? "Editar municipio" : "Agregar municipio"}
+              >
+                {ubicacion.municipio ? <Pencil size={13} /> : <MapPinned size={13} />}
+              </button>
+            </div>
+          )
+        )}
       </div>
 
       <div className="mt-3 flex justify-between">
