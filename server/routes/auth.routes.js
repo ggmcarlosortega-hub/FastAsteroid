@@ -1,5 +1,6 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
+const rateLimit = require("express-rate-limit");
 const { pool } = require("../db/pool");
 const {
   setSessionCookie,
@@ -11,7 +12,19 @@ const { asyncHandler } = require("../lib/asyncHandler");
 
 const router = express.Router();
 
-router.post("/login", asyncHandler(async (req, res) => {
+// Sin esto, nada limitaba cuántas contraseñas se podían probar por minuto
+// contra un mismo teléfono — un script podía intentar miles seguidas (ver
+// auditoría). 10 intentos cada 15 minutos por IP alcanza de sobra para un
+// error real de tipeo, pero frena un ataque de fuerza bruta.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiados intentos de inicio de sesión. Espera unos minutos e intenta de nuevo." },
+});
+
+router.post("/login", loginLimiter, asyncHandler(async (req, res) => {
   const telefono = req.body?.telefono;
   const password = req.body?.password;
 

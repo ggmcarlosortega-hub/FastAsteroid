@@ -19,6 +19,12 @@ const dashboardRoutes = require("./routes/dashboard.routes");
 
 const app = express();
 
+// Fly.io pone su propio proxy delante del proceso — sin esto, `req.ip` (que
+// usa el rate limiter del login) vería siempre la IP interna del proxy en vez
+// de la del cliente real, y todo el mundo compartiría el mismo límite de
+// intentos. "1" = confiar en un solo salto de proxy (el de Fly).
+app.set("trust proxy", 1);
+
 // Next.js habla con este servidor a través de un rewrite (mismo origen desde el
 // navegador), así que CORS permisivo acá solo importa para pruebas directas contra
 // localhost:4000 en desarrollo — no es la puerta de entrada real en producción.
