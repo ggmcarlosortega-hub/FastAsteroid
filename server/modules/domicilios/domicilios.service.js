@@ -238,7 +238,14 @@ async function listHistorial({ telefonoDomiciliario, desde, hasta, estado } = {}
 // y devuelve tanto las líneas resueltas (con precio_unitario congelado al momento de
 // la venta) como el texto de despliegue que se guarda en domicilio.productos, para
 // que toda la UI que ya muestra ese campo siga funcionando sin cambios.
-async function resolverLineasProductos(productosLineas) {
+// `conn`: cuando viene de crearDomicilio() es una conexión con una
+// transacción abierta — el SELECT ... FOR UPDATE bloquea la fila de cada
+// producto elegido hasta que esa transacción termine (commit o rollback), así
+// una segunda venta concurrente del mismo producto tiene que esperar a que la
+// primera libere el lock antes de poder leer cuánto queda disponible. Sin
+// esto, dos domicilios creados casi al mismo tiempo podían ambos pasar la
+// validación de stock y dejar el inventario negativo (ver auditoría).
+async function resolverLineasProductos(productosLineas, conn = pool) {
   if (!Array.isArray(productosLineas) || productosLineas.length === 0) {
     throw new ServiceError("Elige al menos un producto", 400);
   }
@@ -251,8 +258,8 @@ async function resolverLineasProductos(productosLineas) {
       throw new ServiceError("Cada producto necesita una cantidad válida", 400);
     }
 
-    const [rows] = await pool.execute(
-      "SELECT id_producto, nombre, precio_venta, activo FROM producto WHERE id_producto = ?",
+    const [rows] = await conn.execute(
+      "SELECT id_producto, nombre, precio_venta, activo FROM producto WHERE id_producto = ? FOR UPDATE",
       [id_producto]
     );
     const producto = rows[0];
@@ -271,7 +278,7 @@ async function resolverLineasProductos(productosLineas) {
   // No se puede vender más de lo que hay en existencia (comprado - vendido, mismo
   // cálculo que la pantalla de Inventario). Se suma por id_producto por si el
   // catálogo trae la misma línea repetida, para no dejar pasar el total.
-  const disponibleMap = await inventarioService.getDisponibleMap();
+  const disponibleMap = await inventarioService.getDisponibleMap(conn);
   const cantidadPorProducto = new Map();
   for (const l of lineas) {
     cantidadPorProducto.set(l.id_producto, (cantidadPorProducto.get(l.id_producto) ?? 0) + l.cantidad);
@@ -288,9 +295,9 @@ async function resolverLineasProductos(productosLineas) {
   return { productos, lineas };
 }
 
-async function insertarLineasProducto(id_domicilio, lineas) {
+async function insertarLineasProducto(id_domicilio, lineas, conn = pool) {
   for (const linea of lineas) {
-    await pool.execute(
+    await conn.execute(
       `INSERT INTO domicilio_producto (id_domicilio_producto, id_domicilio, id_producto, cantidad, precio_unitario)
        VALUES (?, ?, ?, ?, ?)`,
       [crypto.randomUUID(), id_domicilio, linea.id_producto, linea.cantidad, linea.precio_unitario]
@@ -324,102 +331,126 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
     throw new ServiceError("La foto del pedido es obligatoria", 400);
   }
 
-  const { productos, lineas } = await resolverLineasProductos(data.productos_lineas);
+  // Desde acá todo corre sobre una única conexión con transacción propia —
+  // resolverLineasProductos() bloquea (FOR UPDATE) las filas de producto
+  // elegidas, y ese lock solo sirve como protección real contra la venta
+  // doble si se mantiene hasta que la inserción del domicilio quede
+  // confirmada (commit) o se descarte (rollback). Ver auditoría: antes cada
+  // paso usaba `pool` suelto, así que el lock (si lo hubiera habido) se
+  // liberaba de inmediato y no protegía nada.
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-  if (!creadoPorAdmin) {
-    const [domiciliarioRows] = await pool.execute("SELECT rol FROM usuario WHERE telefono = ?", [
-      telefonoDomiciliario,
-    ]);
-    if (!domiciliarioRows[0] || domiciliarioRows[0].rol !== "Domiciliario") {
-      throw new ServiceError("El domiciliario indicado no existe", 400);
+    const { productos, lineas } = await resolverLineasProductos(data.productos_lineas, conn);
+
+    if (!creadoPorAdmin) {
+      const [domiciliarioRows] = await conn.execute("SELECT rol FROM usuario WHERE telefono = ?", [
+        telefonoDomiciliario,
+      ]);
+      if (!domiciliarioRows[0] || domiciliarioRows[0].rol !== "Domiciliario") {
+        throw new ServiceError("El domiciliario indicado no existe", 400);
+      }
     }
-  }
 
-  const [ubicacionRows] = await pool.execute(
-    "SELECT telefono_cliente FROM ubicacion WHERE id_ubicacion = ?",
-    [id_ubicacion]
-  );
-  if (!ubicacionRows[0] || ubicacionRows[0].telefono_cliente !== telefono_cliente) {
-    throw new ServiceError("La ubicación no pertenece a ese cliente", 400);
-  }
-
-  const id_domicilio = crypto.randomUUID();
-
-  if (creadoPorAdmin) {
-    // telefono_domiciliario queda NULL (columna omitida) — entra a la lista de
-    // espera compartida, sin nadie asignado todavía.
-    await pool.execute(
-      `INSERT INTO domicilio
-         (id_domicilio, telefono_cliente, id_ubicacion, productos, precio, estado, foto_productos_url)
-       VALUES (?, ?, ?, ?, ?, 'Asignado', ?)`,
-      [id_domicilio, telefono_cliente, id_ubicacion, productos, precio, foto_productos_url]
+    const [ubicacionRows] = await conn.execute(
+      "SELECT telefono_cliente FROM ubicacion WHERE id_ubicacion = ?",
+      [id_ubicacion]
     );
-    await insertarLineasProducto(id_domicilio, lineas);
+    if (!ubicacionRows[0] || ubicacionRows[0].telefono_cliente !== telefono_cliente) {
+      throw new ServiceError("La ubicación no pertenece a ese cliente", 400);
+    }
+
+    const id_domicilio = crypto.randomUUID();
+
+    if (creadoPorAdmin) {
+      // telefono_domiciliario queda NULL (columna omitida) — entra a la lista de
+      // espera compartida, sin nadie asignado todavía.
+      await conn.execute(
+        `INSERT INTO domicilio
+           (id_domicilio, telefono_cliente, id_ubicacion, productos, precio, estado, foto_productos_url)
+         VALUES (?, ?, ?, ?, ?, 'Asignado', ?)`,
+        [id_domicilio, telefono_cliente, id_ubicacion, productos, precio, foto_productos_url]
+      );
+      await insertarLineasProducto(id_domicilio, lineas, conn);
+      await conn.commit();
+      emitCambio("domicilios:changed");
+      return getDomicilioPorId(id_domicilio);
+    }
+
+    const espacio_baul = Number(data.espacio_baul);
+    if (!ESPACIOS_VALIDOS.includes(espacio_baul)) {
+      throw new ServiceError(`espacio_baul debe estar entre 1 y ${ESPACIOS_VALIDOS.length}`, 400);
+    }
+
+    // Punto de partida para calcular distancia_km al entregar (Parte 1 del cambio de
+    // hoy) — obligatorio igual que la foto: sin esto no hay cómo calcular la
+    // distancia recorrida más adelante.
+    const latitudRecogida = Number(data.ubicacion_recogida?.latitud);
+    const longitudRecogida = Number(data.ubicacion_recogida?.longitud);
+    if (!Number.isFinite(latitudRecogida) || !Number.isFinite(longitudRecogida)) {
+      throw new ServiceError(
+        "No se pudo capturar tu ubicación GPS. Actívala e intenta de nuevo",
+        400
+      );
+    }
+
+    // listActivos() sigue sobre `pool` (no `conn`) a propósito — la protección
+    // real contra dos domiciliarios tomando el mismo espacio de baúl siempre
+    // fue el índice único domicilio_espacio_activo_unico, no este SELECT
+    // (ver el catch de abajo); este chequeo es solo para un mensaje de error
+    // más claro antes de intentar el INSERT.
+    const activos = await listActivos(telefonoDomiciliario);
+    if (activos.length >= ESPACIOS_VALIDOS.length) {
+      throw new ServiceError(
+        `Ya tienes ${ESPACIOS_VALIDOS.length} domicilios en curso (máximo por carga)`,
+        409
+      );
+    }
+    if (activos.some((d) => d.espacio_baul === espacio_baul)) {
+      throw new ServiceError(`El espacio ${espacio_baul} del baúl ya está ocupado`, 409);
+    }
+
+    try {
+      await conn.execute(
+        `INSERT INTO domicilio
+           (id_domicilio, telefono_cliente, telefono_domiciliario, id_ubicacion, productos, precio, espacio_baul, foto_productos_url, latitud_recogida, longitud_recogida)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id_domicilio,
+          telefono_cliente,
+          telefonoDomiciliario,
+          id_ubicacion,
+          productos,
+          precio,
+          espacio_baul,
+          foto_productos_url,
+          latitudRecogida,
+          longitudRecogida,
+        ]
+      );
+    } catch (err) {
+      // Red de seguridad a nivel de base de datos contra la condición de carrera que
+      // el chequeo de arriba (SELECT activos, después INSERT) no cubre del todo: el
+      // índice único domicilio_espacio_activo_unico (ver schema.sql) es quien
+      // realmente garantiza que dos solicitudes simultáneas no ocupen el mismo
+      // espacio — acá solo se traduce ER_DUP_ENTRY (1062) al mensaje del usuario.
+      if (err.code === "ER_DUP_ENTRY") {
+        throw new ServiceError("Ese espacio del baúl ya está ocupado por otro domicilio en curso", 409);
+      }
+      throw err;
+    }
+
+    await insertarLineasProducto(id_domicilio, lineas, conn);
+    await conn.commit();
     emitCambio("domicilios:changed");
     return getDomicilioPorId(id_domicilio);
-  }
-
-  const espacio_baul = Number(data.espacio_baul);
-  if (!ESPACIOS_VALIDOS.includes(espacio_baul)) {
-    throw new ServiceError(`espacio_baul debe estar entre 1 y ${ESPACIOS_VALIDOS.length}`, 400);
-  }
-
-  // Punto de partida para calcular distancia_km al entregar (Parte 1 del cambio de
-  // hoy) — obligatorio igual que la foto: sin esto no hay cómo calcular la
-  // distancia recorrida más adelante.
-  const latitudRecogida = Number(data.ubicacion_recogida?.latitud);
-  const longitudRecogida = Number(data.ubicacion_recogida?.longitud);
-  if (!Number.isFinite(latitudRecogida) || !Number.isFinite(longitudRecogida)) {
-    throw new ServiceError(
-      "No se pudo capturar tu ubicación GPS. Actívala e intenta de nuevo",
-      400
-    );
-  }
-
-  const activos = await listActivos(telefonoDomiciliario);
-  if (activos.length >= ESPACIOS_VALIDOS.length) {
-    throw new ServiceError(
-      `Ya tienes ${ESPACIOS_VALIDOS.length} domicilios en curso (máximo por carga)`,
-      409
-    );
-  }
-  if (activos.some((d) => d.espacio_baul === espacio_baul)) {
-    throw new ServiceError(`El espacio ${espacio_baul} del baúl ya está ocupado`, 409);
-  }
-
-  try {
-    await pool.execute(
-      `INSERT INTO domicilio
-         (id_domicilio, telefono_cliente, telefono_domiciliario, id_ubicacion, productos, precio, espacio_baul, foto_productos_url, latitud_recogida, longitud_recogida)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id_domicilio,
-        telefono_cliente,
-        telefonoDomiciliario,
-        id_ubicacion,
-        productos,
-        precio,
-        espacio_baul,
-        foto_productos_url,
-        latitudRecogida,
-        longitudRecogida,
-      ]
-    );
   } catch (err) {
-    // Red de seguridad a nivel de base de datos contra la condición de carrera que
-    // el chequeo de arriba (SELECT activos, después INSERT) no cubre del todo: el
-    // índice único domicilio_espacio_activo_unico (ver schema.sql) es quien
-    // realmente garantiza que dos solicitudes simultáneas no ocupen el mismo
-    // espacio — acá solo se traduce ER_DUP_ENTRY (1062) al mensaje del usuario.
-    if (err.code === "ER_DUP_ENTRY") {
-      throw new ServiceError("Ese espacio del baúl ya está ocupado por otro domicilio en curso", 409);
-    }
+    await conn.rollback();
     throw err;
+  } finally {
+    conn.release();
   }
-
-  await insertarLineasProducto(id_domicilio, lineas);
-  emitCambio("domicilios:changed");
-  return getDomicilioPorId(id_domicilio);
 }
 
 // El domiciliario toma un domicilio de la lista de espera compartida (creada por el
