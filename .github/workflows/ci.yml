@@ -1,0 +1,48 @@
+name: CI
+
+# No bloquea el deploy de Vercel/Fly (siguen siendo manuales) — esto es solo
+# una señal temprana en cada push/PR, ya que hoy no hay ningún chequeo
+# automático antes de que un cambio llegue a producción.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Fasteroid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Fasteroid/package-lock.json
+      - run: npm ci
+      # continue-on-error: hay deuda de lint preexistente y aceptada (patrón
+      # "set-state-in-effect" repetido en varios hooks, documentado en la
+      # auditoría) que no rompe el build real — se deja visible en el log del
+      # workflow sin tumbar el check hasta que se decida arreglarla aparte.
+      - run: npm run lint
+        continue-on-error: true
+      - run: npm run build
+
+  backend:
+    name: Backend (instala dependencias)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
