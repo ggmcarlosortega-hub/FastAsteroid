@@ -4,10 +4,11 @@ const domiciliosService = require("../domicilios/domicilios.service");
 const mantenimientoService = require("../mantenimiento/mantenimiento.service");
 
 // Agregador delgado: no repite ninguna consulta SQL de domicilios ni de
-// mantenimiento — reusa listHistorial() y listRegistros(), que ya existen y ya
-// hacen el trabajo pesado (incluido el cálculo de rendimiento km/galón, que
-// listRegistros() calcula sobre TODA la historia para que un tanqueo a caballo
-// entre dos meses se compare bien contra el anterior, aunque caiga en el mes previo).
+// mantenimiento — reusa listHistorial() y listTodosLosRegistros(), que ya
+// existen y ya hacen el trabajo pesado (incluido el cálculo de rendimiento
+// km/galón por vehículo, sobre TODA la historia de cada uno, para que un
+// tanqueo a caballo entre dos meses se compare bien contra el anterior,
+// aunque caiga en el mes previo).
 async function getResumenMensual(mes) {
   if (!/^\d{4}-\d{2}$/.test(mes)) {
     throw new ServiceError("mes inválido (formato esperado: YYYY-MM)", 400);
@@ -43,7 +44,7 @@ async function getResumenMensual(mes) {
   const cliente_mas_frecuente =
     [...conteoPorCliente.values()].sort((a, b) => b.cantidad - a.cantidad)[0] ?? null;
 
-  const registros = await mantenimientoService.listRegistros();
+  const registros = await mantenimientoService.listTodosLosRegistros();
   const registrosDelMes = registros.filter((r) => {
     const t = new Date(r.fecha_hora).getTime();
     return t >= inicio.getTime() && t <= fin.getTime();

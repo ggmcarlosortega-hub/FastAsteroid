@@ -8,7 +8,7 @@ import MySwal from "../../../lib/swal";
 // Registrar un evento de mantenimiento — CU-18 de aplicativos.md. Solo pide
 // galones (Tanqueo) o descripción (Taller/Compra_Adicional) según el tipo elegido,
 // igual que EntregarModal.js condiciona sus campos según el método de pago.
-function RegistroMantenimientoFormContent({ onSaved }) {
+function RegistroMantenimientoFormContent({ idVehiculo, onSaved }) {
   const [serverError, setServerError] = useState(null);
   const {
     register,
@@ -32,6 +32,7 @@ function RegistroMantenimientoFormContent({ onSaved }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        id_vehiculo: idVehiculo,
         tipo: values.tipo,
         kilometraje_actual: Number(values.kilometraje_actual),
         costo_total: Number(values.costo_total),
@@ -166,13 +167,14 @@ function RegistroMantenimientoFormContent({ onSaved }) {
   );
 }
 
-export function openRegistroMantenimientoFormModal() {
+export function openRegistroMantenimientoFormModal(idVehiculo) {
   return new Promise((resolve) => {
     let resolved = false;
     MySwal.fire({
       title: "Nuevo registro de mantenimiento",
       html: (
         <RegistroMantenimientoFormContent
+          idVehiculo={idVehiculo}
           onSaved={(data) => {
             resolved = true;
             resolve(data);

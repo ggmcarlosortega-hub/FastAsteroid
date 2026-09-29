@@ -11,7 +11,7 @@ function mesActual() {
 export function useDashboardMensual() {
   const [mes, setMes] = useState(mesActual());
   const [resumen, setResumen] = useState(null);
-  const [alerta, setAlerta] = useState(null);
+  const [alertas, setAlertas] = useState([]);
   const [serie, setSerie] = useState(null);
   const [topProductos, setTopProductos] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -24,13 +24,13 @@ export function useDashboardMensual() {
     setLoading(true);
     setError(null);
     try {
-      const [resResumen, resAlerta, resTopProductos] = await Promise.all([
+      const [resResumen, resAlertas, resTopProductos] = await Promise.all([
         fetch(`/api/dashboard/resumen?mes=${encodeURIComponent(m)}`),
-        fetch("/api/mantenimiento/alerta"),
+        fetch("/api/mantenimiento/alertas"),
         fetch(`/api/dashboard/top-productos?mes=${encodeURIComponent(m)}`),
       ]);
       setResumen(await resResumen.json());
-      setAlerta(await resAlerta.json());
+      setAlertas(await resAlertas.json());
       setTopProductos(await resTopProductos.json());
     } catch {
       setError("No se pudo cargar el dashboard. Verifica tu conexión e intenta de nuevo.");
@@ -68,5 +68,5 @@ export function useDashboardMensual() {
     cargarSerie();
   });
 
-  return { mes, setMes, resumen, alerta, serie, topProductos, loading, error, reintentar: () => cargar(mes) };
+  return { mes, setMes, resumen, alertas, serie, topProductos, loading, error, reintentar: () => cargar(mes) };
 }

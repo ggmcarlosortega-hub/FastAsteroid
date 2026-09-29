@@ -11,9 +11,13 @@ router.use(requireRole("Admin"));
 
 router.get(
   "/",
-  asyncHandler(async (_req, res) => {
-    const registros = await mantenimientoService.listRegistros();
-    res.json(registros);
+  asyncHandler(async (req, res) => {
+    try {
+      const registros = await mantenimientoService.listRegistros(req.query.id_vehiculo);
+      res.json(registros);
+    } catch (err) {
+      sendServiceError(res, err);
+    }
   })
 );
 
@@ -31,8 +35,21 @@ router.post(
 
 router.get(
   "/alerta",
+  asyncHandler(async (req, res) => {
+    try {
+      res.json(await mantenimientoService.getAlertaPreventiva(req.query.id_vehiculo));
+    } catch (err) {
+      sendServiceError(res, err);
+    }
+  })
+);
+
+// Usada por el dashboard del Admin: no recibe id_vehiculo — recorre todos los
+// vehículos activos y devuelve solo los que de verdad deben alertar.
+router.get(
+  "/alertas",
   asyncHandler(async (_req, res) => {
-    res.json(await mantenimientoService.getAlertaPreventiva());
+    res.json(await mantenimientoService.getAlertasPreventivas());
   })
 );
 

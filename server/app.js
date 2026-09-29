@@ -15,6 +15,7 @@ const municipiosRoutes = require("./routes/municipios.routes");
 const lotesRoutes = require("./routes/lotes.routes");
 const inventarioRoutes = require("./routes/inventario.routes");
 const mantenimientoRoutes = require("./routes/mantenimiento.routes");
+const vehiculosRoutes = require("./routes/vehiculos.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 
 const app = express();
@@ -62,6 +63,7 @@ app.use("/api/municipios", municipiosRoutes);
 app.use("/api/lotes", lotesRoutes);
 app.use("/api/inventario", inventarioRoutes);
 app.use("/api/mantenimiento", mantenimientoRoutes);
+app.use("/api/vehiculos", vehiculosRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 
 // Middleware de error centralizado: cualquier error no capturado en una ruta cae

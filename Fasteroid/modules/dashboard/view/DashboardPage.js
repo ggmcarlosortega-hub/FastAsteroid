@@ -42,24 +42,32 @@ const COLORES_TOP_PRODUCTOS = [
 ];
 
 export default function DashboardPage() {
-  const { mes, setMes, resumen, alerta, serie, topProductos, loading, error, reintentar } = useDashboardMensual();
+  const { mes, setMes, resumen, alertas, serie, topProductos, loading, error, reintentar } = useDashboardMensual();
 
   return (
     <div>
       {/* Alerta de mantenimiento preventivo (Fase 3) — no depende del mes elegido
-          arriba, siempre refleja el estado actual de la moto. */}
-      {alerta?.debeAlertar && (
-        <Link
-          href="/admin/mantenimiento"
-          className="mb-4 flex items-center gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/30"
-        >
-          <AlertTriangle size={18} className="shrink-0" />
-          <span>
-            La moto lleva <strong>{alerta.km_desde_taller.toLocaleString("es-CO")} km</strong> desde el
-            último mantenimiento en taller (umbral: {alerta.umbral_km.toLocaleString("es-CO")} km) —
-            puede ser hora de una revisión.
-          </span>
-        </Link>
+          arriba, siempre refleja el estado actual de cada vehículo activo. Con
+          varios vehículos, cada uno puede necesitar revisión en momentos
+          distintos, así que se muestra una banda por cada uno que la necesite. */}
+      {alertas.length > 0 && (
+        <div className="mb-4 flex flex-col gap-2">
+          {alertas.map((a) => (
+            <Link
+              key={a.id_vehiculo}
+              href="/admin/mantenimiento"
+              className="flex items-center gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/30"
+            >
+              <AlertTriangle size={18} className="shrink-0" />
+              <span>
+                <strong>{a.nombre}</strong> lleva{" "}
+                <strong>{a.km_desde_taller.toLocaleString("es-CO")} km</strong> desde el último
+                mantenimiento en taller (umbral: {a.umbral_km.toLocaleString("es-CO")} km) — puede ser
+                hora de una revisión.
+              </span>
+            </Link>
+          ))}
+        </div>
       )}
 
       <div className="flex items-center justify-between">

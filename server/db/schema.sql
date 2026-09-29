@@ -8,6 +8,7 @@ DROP TABLE IF EXISTS domicilio;
 DROP TABLE IF EXISTS ubicacion;
 DROP TABLE IF EXISTS municipio;
 DROP TABLE IF EXISTS registro_mantenimiento;
+DROP TABLE IF EXISTS vehiculo;
 DROP TABLE IF EXISTS cliente;
 DROP TABLE IF EXISTS producto;
 DROP TABLE IF EXISTS categoria_producto;
@@ -35,9 +36,16 @@ CREATE TABLE cliente (
 -- Catálogo aparte, igual patrón que proveedor — un producto puede quedar sin
 -- categoría (id_categoria NULL) hasta que alguien se la asigne.
 CREATE TABLE categoria_producto (
-  id_categoria    CHAR(36)      PRIMARY KEY,
-  nombre          VARCHAR(255)  NOT NULL UNIQUE,
-  fecha_creacion  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id_categoria        CHAR(36)      PRIMARY KEY,
+  nombre              VARCHAR(255)  NOT NULL UNIQUE,
+  -- Subcategorías: opcional, una categoría sin padre es de nivel superior (ej.
+  -- "Pizzas"), y las que sí tienen padre agrupan bajo ella (ej. "Pizzas Rigos"
+  -- bajo "Pizzas"). Borrar el padre no borra los hijos, solo los deja sin padre.
+  id_categoria_padre  CHAR(36)      NULL,
+  fecha_creacion      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT categoria_producto_padre_fkey
+    FOREIGN KEY (id_categoria_padre) REFERENCES categoria_producto(id_categoria)
+    ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Módulo de inventario (Fase 1): catálogo de productos que vende el negocio.
@@ -135,6 +143,12 @@ CREATE TABLE domicilio (
   -- pantalla bloqueada o la app en background durante una entrega real).
   latitud_recogida       DOUBLE         NULL,
   longitud_recogida      DOUBLE         NULL,
+  -- accuracy (metros) que devolvió la API de Geolocalización en cada punto —
+  -- sin esto no había forma de saber si un distancia_km chico era una entrega
+  -- real corta o un GPS que nunca logró un fix preciso (ver decisión en el
+  -- vault: distancia_km venía dando 0-35m en TODAS las entregas reales).
+  precision_recogida_m   DOUBLE         NULL,
+  precision_entrega_m    DOUBLE         NULL,
   espacio_baul           TINYINT        NULL,
   -- LONGTEXT y no TEXT: una foto real en base64 puede superar los 64 KB que MySQL
   -- permite en TEXT (SQLite no tenía ese límite práctico).
@@ -208,13 +222,29 @@ CREATE TABLE domicilio_producto (
   CONSTRAINT chk_domicilio_producto_cantidad CHECK (cantidad > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Definida en el modelo pero todavía sin flujo de UI/API (Bloque 3 del backlog, pendiente).
+-- El negocio puede tener más de un vehículo a la vez (ej. una moto por
+-- domiciliario) — cada uno lleva su propio historial de mantenimiento y
+-- rendimiento km/galón por separado, nunca mezclados entre sí.
+CREATE TABLE vehiculo (
+  id_vehiculo     CHAR(36)      PRIMARY KEY,
+  nombre          VARCHAR(255)  NOT NULL,
+  placa           VARCHAR(20)   NULL UNIQUE,
+  -- Mismo patrón que producto.activo: un vehículo dado de baja no se borra
+  -- (conserva su historial), solo se saca del selector de registros nuevos.
+  activo          BOOLEAN       NOT NULL DEFAULT TRUE,
+  fecha_creacion  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE registro_mantenimiento (
   id_registro                  CHAR(36)      PRIMARY KEY,
+  id_vehiculo                  CHAR(36)      NOT NULL,
   fecha_hora                   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   kilometraje_actual            INT          NOT NULL,
   tipo                          ENUM('Tanqueo', 'Taller', 'Compra_Adicional') NOT NULL,
   galones_ingresados             DOUBLE      NULL,
   costo_total                    DECIMAL(10,2) NULL,
-  descripcion_compras_y_taller   TEXT        NULL
+  descripcion_compras_y_taller   TEXT        NULL,
+  CONSTRAINT registro_mantenimiento_vehiculo_fkey
+    FOREIGN KEY (id_vehiculo) REFERENCES vehiculo(id_vehiculo)
+    ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
