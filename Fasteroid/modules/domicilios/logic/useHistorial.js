@@ -19,13 +19,20 @@ export function useHistorial(periodoFijo) {
   const [periodo, setPeriodo] = useState(periodoFijo ?? "mes");
   const [domicilios, setDomicilios] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const cargar = useCallback(async (p) => {
     setLoading(true);
-    const desde = inicioDe(p).toISOString();
-    const res = await fetch(`/api/domicilios?desde=${encodeURIComponent(desde)}`);
-    setDomicilios(await res.json());
-    setLoading(false);
+    setError(null);
+    try {
+      const desde = inicioDe(p).toISOString();
+      const res = await fetch(`/api/domicilios?desde=${encodeURIComponent(desde)}`);
+      setDomicilios(await res.json());
+    } catch {
+      setError("No se pudo cargar el historial. Verifica tu conexión e intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -60,5 +67,5 @@ export function useHistorial(periodoFijo) {
     }
   );
 
-  return { periodo, setPeriodo, domicilios, loading, resumen };
+  return { periodo, setPeriodo, domicilios, loading, error, reintentar: () => cargar(periodo), resumen };
 }

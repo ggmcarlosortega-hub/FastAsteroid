@@ -24,6 +24,7 @@ import DesglosePago from "../components/DesglosePago";
 import BarrasHorizontales from "../../../components/charts/BarrasHorizontales";
 import BarrasSerie from "../../../components/charts/BarrasSerie";
 import { descargarCsv } from "../../../lib/exportCsv";
+import ErrorReintentar from "../../../components/ErrorReintentar";
 
 // Mismo criterio de color que ESTADO_BADGE/GananciasPerdidas (verde=entregado,
 // rojo=cancelado) para que un mismo estado se vea igual en toda la pantalla —
@@ -59,6 +60,8 @@ export default function AdminDomiciliosPage() {
     periodo,
     setPeriodo,
     loading,
+    error,
+    reintentar,
     handleNuevo,
     ganancias,
     perdidas,
@@ -85,6 +88,8 @@ export default function AdminDomiciliosPage() {
           Nuevo domicilio
         </button>
       </div>
+
+      {error && <ErrorReintentar mensaje={error} onReintentar={reintentar} />}
 
       {/* Sección "lista de espera": domicilios que el Admin creó sin asignarlos a
           nadie — cualquier domiciliario disponible los ve y el primero que

@@ -23,6 +23,7 @@ import { useHistorial } from "../logic/useHistorial";
 import { googleMapsUrl } from "../logic/googleMapsUrl";
 import { ESPACIOS_VALIDOS } from "../components/EspacioBaulSelector";
 import DesglosePago from "../components/DesglosePago";
+import ErrorReintentar from "../../../components/ErrorReintentar";
 
 const ESTADO_BADGE = {
   Entregado: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
@@ -34,6 +35,8 @@ export default function DomiciliarioHomePage() {
     activos,
     asignados,
     loading,
+    error,
+    reintentar,
     handleNuevo,
     handleEscanear,
     handleEntregar,
@@ -42,7 +45,13 @@ export default function DomiciliarioHomePage() {
   } = useDomiciliosActivos();
   // El domiciliario solo ve estadísticas del día — las métricas completas
   // (semana/mes) quedan reservadas al panel del Administrador.
-  const { domicilios, loading: cargandoHistorial, resumen } = useHistorial("dia");
+  const {
+    domicilios,
+    loading: cargandoHistorial,
+    error: errorHistorial,
+    reintentar: reintentarHistorial,
+    resumen,
+  } = useHistorial("dia");
 
   return (
     <div>
@@ -74,6 +83,9 @@ export default function DomiciliarioHomePage() {
           </button>
         </div>
       </div>
+
+      {error && <ErrorReintentar mensaje={error} onReintentar={reintentar} />}
+      {errorHistorial && <ErrorReintentar mensaje={errorHistorial} onReintentar={reintentarHistorial} />}
 
       {/* Sección "lista de espera": domicilios que el Admin creó sin asignarlos a
           nadie — los ve cualquier domiciliario, y el primero que presiona

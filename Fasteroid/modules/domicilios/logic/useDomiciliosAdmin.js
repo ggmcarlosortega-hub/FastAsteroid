@@ -23,19 +23,26 @@ export function useDomiciliosAdmin() {
   const [periodo, setPeriodo] = useState("mes");
   const [historial, setHistorial] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const cargar = useCallback(async (p) => {
     setLoading(true);
-    const desde = inicioDe(p).toISOString();
-    const [activosRes, asignadosRes, historialRes] = await Promise.all([
-      fetch("/api/domicilios?vista=activos"),
-      fetch("/api/domicilios?vista=asignados"),
-      fetch(`/api/domicilios?desde=${encodeURIComponent(desde)}`),
-    ]);
-    setActivos(await activosRes.json());
-    setAsignados(await asignadosRes.json());
-    setHistorial(await historialRes.json());
-    setLoading(false);
+    setError(null);
+    try {
+      const desde = inicioDe(p).toISOString();
+      const [activosRes, asignadosRes, historialRes] = await Promise.all([
+        fetch("/api/domicilios?vista=activos"),
+        fetch("/api/domicilios?vista=asignados"),
+        fetch(`/api/domicilios?desde=${encodeURIComponent(desde)}`),
+      ]);
+      setActivos(await activosRes.json());
+      setAsignados(await asignadosRes.json());
+      setHistorial(await historialRes.json());
+    } catch {
+      setError("No se pudieron cargar los domicilios. Verifica tu conexión e intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -133,6 +140,8 @@ export function useDomiciliosAdmin() {
     periodo,
     setPeriodo,
     loading,
+    error,
+    reintentar: () => cargar(periodo),
     handleNuevo,
     ganancias,
     perdidas,

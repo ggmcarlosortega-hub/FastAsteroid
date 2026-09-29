@@ -17,16 +17,26 @@ export function useDomiciliosActivos() {
   const [activos, setActivos] = useState([]);
   const [asignados, setAsignados] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
+  // Sin try/catch, un fetch fallido (mala señal en la calle, backend
+  // reiniciándose) dejaba esta pantalla — la principal del domiciliario —
+  // en "Cargando..." para siempre, sin aviso ni forma de reintentar.
   const cargar = useCallback(async () => {
     setLoading(true);
-    const [activosRes, asignadosRes] = await Promise.all([
-      fetch("/api/domicilios?vista=activos"),
-      fetch("/api/domicilios?vista=asignados"),
-    ]);
-    setActivos(await activosRes.json());
-    setAsignados(await asignadosRes.json());
-    setLoading(false);
+    setError(null);
+    try {
+      const [activosRes, asignadosRes] = await Promise.all([
+        fetch("/api/domicilios?vista=activos"),
+        fetch("/api/domicilios?vista=asignados"),
+      ]);
+      setActivos(await activosRes.json());
+      setAsignados(await asignadosRes.json());
+    } catch {
+      setError("No se pudieron cargar tus domicilios. Verifica tu conexión e intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -245,6 +255,8 @@ export function useDomiciliosActivos() {
     activos,
     asignados,
     loading,
+    error,
+    reintentar: cargar,
     handleNuevo,
     handleEscanear,
     handleEntregar,

@@ -32,27 +32,34 @@ export function useInventarioAdmin() {
   const [inventario, setInventario] = useState([]);
   const [gastoSemanal, setGastoSemanal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
-    const [productosRes, proveedoresRes, categoriasRes, municipiosRes, lotesRes, inventarioRes, gastoSemanalRes] =
-      await Promise.all([
-        fetch("/api/productos"),
-        fetch("/api/proveedores"),
-        fetch("/api/categorias"),
-        fetch("/api/municipios"),
-        fetch("/api/lotes"),
-        fetch("/api/inventario"),
-        fetch("/api/lotes/gasto-semanal"),
-      ]);
-    setProductos(await productosRes.json());
-    setProveedores(await proveedoresRes.json());
-    setCategorias(await categoriasRes.json());
-    setMunicipios(await municipiosRes.json());
-    setLotes(await lotesRes.json());
-    setInventario(await inventarioRes.json());
-    setGastoSemanal((await gastoSemanalRes.json()).total);
-    setLoading(false);
+    setError(null);
+    try {
+      const [productosRes, proveedoresRes, categoriasRes, municipiosRes, lotesRes, inventarioRes, gastoSemanalRes] =
+        await Promise.all([
+          fetch("/api/productos"),
+          fetch("/api/proveedores"),
+          fetch("/api/categorias"),
+          fetch("/api/municipios"),
+          fetch("/api/lotes"),
+          fetch("/api/inventario"),
+          fetch("/api/lotes/gasto-semanal"),
+        ]);
+      setProductos(await productosRes.json());
+      setProveedores(await proveedoresRes.json());
+      setCategorias(await categoriasRes.json());
+      setMunicipios(await municipiosRes.json());
+      setLotes(await lotesRes.json());
+      setInventario(await inventarioRes.json());
+      setGastoSemanal((await gastoSemanalRes.json()).total);
+    } catch {
+      setError("No se pudo cargar el inventario. Verifica tu conexión e intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -252,6 +259,8 @@ export function useInventarioAdmin() {
     inventario,
     gastoSemanal,
     loading,
+    error,
+    reintentar: cargar,
     handleNuevoProducto,
     handleEditarProducto,
     handleNuevosProductosMasivo,

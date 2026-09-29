@@ -4,6 +4,7 @@ import { Fragment, useState } from "react";
 import { Package, Truck, ShoppingCart, Boxes, Tag, Plus, Pencil, Trash2, Layers, Camera, Wallet, MapPinned } from "lucide-react";
 import { useInventarioAdmin } from "../logic/useInventarioAdmin";
 import { agruparPorCategoria } from "../logic/agruparPorCategoria";
+import ErrorReintentar from "../../../components/ErrorReintentar";
 
 const TABS = [
   { id: "productos", label: "Productos", icon: Package },
@@ -32,6 +33,8 @@ export default function InventarioPage() {
     inventario,
     gastoSemanal,
     loading,
+    error,
+    reintentar,
     handleNuevoProducto,
     handleEditarProducto,
     handleNuevosProductosMasivo,
@@ -90,6 +93,7 @@ export default function InventarioPage() {
       </div>
 
       {loading && <p className="mt-6 text-center text-sm text-zinc-400">Cargando...</p>}
+      {!loading && error && <ErrorReintentar mensaje={error} onReintentar={reintentar} />}
 
       {/* Pestaña "Productos": catálogo — es de acá de donde sale la lista que
           usa SeleccionProductosPicker.js al crear un domicilio. Un producto

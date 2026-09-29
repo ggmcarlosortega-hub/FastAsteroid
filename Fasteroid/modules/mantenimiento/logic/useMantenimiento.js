@@ -8,12 +8,19 @@ import { openRegistroMantenimientoFormModal } from "../components/RegistroManten
 export function useMantenimiento() {
   const [registros, setRegistros] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/mantenimiento");
-    setRegistros(await res.json());
-    setLoading(false);
+    setError(null);
+    try {
+      const res = await fetch("/api/mantenimiento");
+      setRegistros(await res.json());
+    } catch {
+      setError("No se pudo cargar el mantenimiento. Verifica tu conexión e intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -59,5 +66,5 @@ export function useMantenimiento() {
       };
     });
 
-  return { registros, loading, handleNuevoRegistro, gastoPorTipo, rendimientoPorTanqueo };
+  return { registros, loading, error, reintentar: cargar, handleNuevoRegistro, gastoPorTipo, rendimientoPorTanqueo };
 }

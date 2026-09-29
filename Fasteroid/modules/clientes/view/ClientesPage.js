@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { Search, UserPlus, Pencil, Trash2, MapPin, Bike, ChevronRight } from "lucide-react";
 import { useClientesList } from "../logic/useClientesList";
+import ErrorReintentar from "../../../components/ErrorReintentar";
 
 export default function ClientesPage() {
-  const { clientes, q, setQ, loading, handleNuevo, handleEditar, handleEliminar } =
+  const { clientes, q, setQ, loading, error, reintentar, handleNuevo, handleEditar, handleEliminar } =
     useClientesList();
 
   return (
@@ -40,13 +41,15 @@ export default function ClientesPage() {
         />
       </div>
 
+      {error && <ErrorReintentar mensaje={error} onReintentar={reintentar} />}
+
       {/* Lista de clientes — cada fila tiene: link al detalle (nombre + tel +
           conteo de ubicaciones/domicilios), y botones editar/eliminar/entrar. */}
       <div className="mt-4 divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
         {loading && (
           <p className="p-6 text-center text-sm text-zinc-400">Cargando...</p>
         )}
-        {!loading && clientes.length === 0 && (
+        {!loading && !error && clientes.length === 0 && (
           <p className="p-6 text-center text-sm text-zinc-400">
             No hay clientes registrados todavía.
           </p>

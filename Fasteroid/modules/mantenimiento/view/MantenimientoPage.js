@@ -5,6 +5,7 @@ import { useMantenimiento } from "../logic/useMantenimiento";
 import BarrasHorizontales from "../../../components/charts/BarrasHorizontales";
 import BarrasSerie from "../../../components/charts/BarrasSerie";
 import { descargarCsv } from "../../../lib/exportCsv";
+import ErrorReintentar from "../../../components/ErrorReintentar";
 
 const COLUMNAS_CSV = [
   { key: "tipo", label: "Tipo" },
@@ -38,7 +39,8 @@ const TIPO_INFO = {
 };
 
 export default function MantenimientoPage() {
-  const { registros, loading, handleNuevoRegistro, gastoPorTipo, rendimientoPorTanqueo } = useMantenimiento();
+  const { registros, loading, error, reintentar, handleNuevoRegistro, gastoPorTipo, rendimientoPorTanqueo } =
+    useMantenimiento();
 
   return (
     <div>
@@ -82,6 +84,7 @@ export default function MantenimientoPage() {
       </div>
 
       {loading && <p className="mt-6 text-center text-sm text-zinc-400">Cargando...</p>}
+      {!loading && error && <ErrorReintentar mensaje={error} onReintentar={reintentar} />}
 
       {/* Gráficos de contexto (Fase 3 — PDF con estadísticas): antes esta
           pantalla no tenía ningún gráfico, solo la lista cruda. Al estar en la

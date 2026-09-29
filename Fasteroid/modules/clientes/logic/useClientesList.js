@@ -9,13 +9,19 @@ export function useClientesList() {
   const [clientes, setClientes] = useState([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const cargar = useCallback(async (query) => {
     setLoading(true);
-    const res = await fetch(`/api/clientes${query ? `?q=${encodeURIComponent(query)}` : ""}`);
-    const data = await res.json();
-    setClientes(data);
-    setLoading(false);
+    setError(null);
+    try {
+      const res = await fetch(`/api/clientes${query ? `?q=${encodeURIComponent(query)}` : ""}`);
+      setClientes(await res.json());
+    } catch {
+      setError("No se pudieron cargar los clientes. Verifica tu conexión e intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -84,5 +90,5 @@ export function useClientesList() {
     cargar(q);
   }
 
-  return { clientes, q, setQ, loading, handleNuevo, handleEditar, handleEliminar };
+  return { clientes, q, setQ, loading, error, reintentar: () => cargar(q), handleNuevo, handleEditar, handleEliminar };
 }

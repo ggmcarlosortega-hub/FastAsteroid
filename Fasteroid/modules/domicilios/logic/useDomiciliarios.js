@@ -8,12 +8,19 @@ import { openDomiciliarioFormModal } from "../components/DomiciliarioFormModal";
 export function useDomiciliarios() {
   const [domiciliarios, setDomiciliarios] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/domiciliarios");
-    setDomiciliarios(await res.json());
-    setLoading(false);
+    setError(null);
+    try {
+      const res = await fetch("/api/domiciliarios");
+      setDomiciliarios(await res.json());
+    } catch {
+      setError("No se pudieron cargar los domiciliarios. Verifica tu conexión e intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -64,5 +71,5 @@ export function useDomiciliarios() {
     cargar();
   }
 
-  return { domiciliarios, loading, handleToggleActivo, handleNuevoDomiciliario };
+  return { domiciliarios, loading, error, reintentar: cargar, handleToggleActivo, handleNuevoDomiciliario };
 }

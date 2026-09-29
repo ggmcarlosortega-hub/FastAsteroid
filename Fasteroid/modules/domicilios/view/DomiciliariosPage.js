@@ -3,9 +3,11 @@
 import { Bike, Phone, Power, Plus } from "lucide-react";
 import { useDomiciliarios } from "../logic/useDomiciliarios";
 import DesglosePago from "../components/DesglosePago";
+import ErrorReintentar from "../../../components/ErrorReintentar";
 
 export default function DomiciliariosPage() {
-  const { domiciliarios, loading, handleToggleActivo, handleNuevoDomiciliario } = useDomiciliarios();
+  const { domiciliarios, loading, error, reintentar, handleToggleActivo, handleNuevoDomiciliario } =
+    useDomiciliarios();
 
   return (
     <div>
@@ -26,9 +28,10 @@ export default function DomiciliariosPage() {
       </div>
 
       {loading && <p className="mt-6 text-center text-sm text-zinc-400">Cargando...</p>}
+      {!loading && error && <ErrorReintentar mensaje={error} onReintentar={reintentar} />}
 
       <div className="mt-4 flex flex-col gap-2">
-        {!loading && domiciliarios.length === 0 && (
+        {!loading && !error && domiciliarios.length === 0 && (
           <p className="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-400 dark:border-zinc-700">
             No hay domiciliarios registrados.
           </p>
