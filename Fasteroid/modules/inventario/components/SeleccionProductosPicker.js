@@ -15,6 +15,13 @@ export default function SeleccionProductosPicker({ value, onChange, error }) {
   // productos elegidos" y "hay una búsqueda con match" para decidir qué se ve
   // abierto en cada render (ver estaExpandida más abajo).
   const [tocadas, setTocadas] = useState(new Map());
+  // Bordes activados por pizza: clave `${id_pizza}|${id_borde}` -> cantidad de
+  // borde que ESE toggle agregó a `value` (ver alternarBorde). Vive aparte de
+  // `value` porque varias pizzas de sabores distintos pero del mismo tamaño
+  // comparten el mismo producto de borde — hay que saber cuánto le aportó cada
+  // una para poder quitar exactamente eso al desactivar, sin tocar lo que
+  // aportó otra pizza distinta al mismo borde.
+  const [bordesActivos, setBordesActivos] = useState(new Map());
 
   useEffect(() => {
     fetch("/api/productos?activos=1")
@@ -26,25 +33,100 @@ export default function SeleccionProductosPicker({ value, onChange, error }) {
     return value.find((l) => l.id_producto === id_producto)?.cantidad ?? 0;
   }
 
-  function cambiarCantidad(producto, delta) {
+  // Ajusta la cantidad de `producto` en `delta` (puede ser negativo), respeta
+  // el disponible y el piso en 0, y devuelve cuánto se aplicó de verdad (puede
+  // ser menos que `delta` si el disponible no alcanzaba) — alternarBorde lo
+  // necesita para saber exactamente cuánto borde quedó activado.
+  function ajustarCantidad(producto, delta) {
     const actual = cantidadDe(producto.id_producto);
     const disponible = Math.max(0, producto.disponible ?? Infinity);
     const nueva = Math.min(disponible, Math.max(0, actual + delta));
+    const aplicado = nueva - actual;
+    if (aplicado === 0) return 0;
 
     if (nueva === 0) {
       onChange(value.filter((l) => l.id_producto !== producto.id_producto));
-      return;
-    }
-    if (actual === 0) {
+    } else if (actual === 0) {
       onChange([
         ...value,
         { id_producto: producto.id_producto, cantidad: nueva, nombre: producto.nombre, precio_venta: producto.precio_venta },
       ]);
+    } else {
+      onChange(value.map((l) => (l.id_producto === producto.id_producto ? { ...l, cantidad: nueva } : l)));
+    }
+    return aplicado;
+  }
+
+  // Es una pizza (no una "Porcion X", que no tiene tamano) con al menos un
+  // borde de su mismo tamaño en el catálogo — ver categorias.service.js y el
+  // backfill de producto.tamano.
+  function esPizzaConBorde(producto) {
+    return producto.categoria?.categoria_padre?.nombre === "Pizzas" && producto.tamano != null;
+  }
+
+  function bordesDe(producto) {
+    if (!esPizzaConBorde(producto)) return [];
+    return productos.filter((p) => p.categoria?.nombre === "Bordes" && p.tamano === producto.tamano);
+  }
+
+  function claveBorde(idPizza, idBorde) {
+    return `${idPizza}|${idBorde}`;
+  }
+
+  function bordeActivo(idPizza, idBorde) {
+    return (bordesActivos.get(claveBorde(idPizza, idBorde)) ?? 0) > 0;
+  }
+
+  // Un toggle, no un stepper (a propósito, CU nuevo): al activar, agrega tantas
+  // unidades del borde como pizzas de ESTA fila estén pedidas ahora mismo — si
+  // luego cambia la cantidad de esa pizza, el borde no seudo-sigue solo, hay
+  // que reactivarlo para ajustarlo (evita "magia" oculta que el usuario no pidió).
+  function alternarBorde(pizza, borde) {
+    const clave = claveBorde(pizza.id_producto, borde.id_producto);
+    const aplicada = bordesActivos.get(clave) ?? 0;
+
+    if (aplicada > 0) {
+      ajustarCantidad(borde, -aplicada);
+      setBordesActivos((prev) => {
+        const next = new Map(prev);
+        next.delete(clave);
+        return next;
+      });
       return;
     }
-    onChange(
-      value.map((l) => (l.id_producto === producto.id_producto ? { ...l, cantidad: nueva } : l))
-    );
+
+    const cantidadPizza = cantidadDe(pizza.id_producto);
+    if (cantidadPizza === 0) return;
+    const agregada = ajustarCantidad(borde, cantidadPizza);
+    if (agregada > 0) {
+      setBordesActivos((prev) => new Map(prev).set(clave, agregada));
+    }
+  }
+
+  // Stepper -1/+1 de la fila principal (pizza, borde suelto, o cualquier otro
+  // producto). Al bajar una pizza a 0, también apaga y retira sus bordes
+  // activados — dejarlos sueltos facturaría un borde de una pizza que ya no
+  // está en el pedido.
+  function cambiarCantidad(producto, delta) {
+    const actual = cantidadDe(producto.id_producto);
+    const aplicado = ajustarCantidad(producto, delta);
+    if (aplicado === 0) return;
+
+    if (esPizzaConBorde(producto) && actual + aplicado === 0) {
+      for (const [clave, aplicada] of bordesActivos) {
+        if (!clave.startsWith(`${producto.id_producto}|`)) continue;
+        const idBorde = clave.slice(producto.id_producto.length + 1);
+        const borde = productos.find((p) => p.id_producto === idBorde);
+        if (borde) ajustarCantidad(borde, -aplicada);
+      }
+      setBordesActivos((prev) => {
+        const next = new Map(prev);
+        for (const clave of next.keys()) {
+          if (clave.startsWith(`${producto.id_producto}|`)) next.delete(clave);
+        }
+        return next;
+      });
+    }
   }
 
   const query = busqueda.trim().toLowerCase();
@@ -196,6 +278,9 @@ export default function SeleccionProductosPicker({ value, onChange, error }) {
                           producto={producto}
                           cantidad={cantidadDe(producto.id_producto)}
                           onCambiar={cambiarCantidad}
+                          bordes={bordesDe(producto)}
+                          bordeActivo={bordeActivo}
+                          onAlternarBorde={alternarBorde}
                         />
                       ))}
                     </div>
@@ -215,6 +300,9 @@ export default function SeleccionProductosPicker({ value, onChange, error }) {
                             producto={producto}
                             cantidad={cantidadDe(producto.id_producto)}
                             onCambiar={cambiarCantidad}
+                            bordes={bordesDe(producto)}
+                            bordeActivo={bordeActivo}
+                            onAlternarBorde={alternarBorde}
                           />
                         ))}
                       </div>
@@ -232,43 +320,81 @@ export default function SeleccionProductosPicker({ value, onChange, error }) {
   );
 }
 
+// Los nombres de borde de hoy son "Borde Bocadillo <Tamaño>" / "Borde de Queso
+// <Tamaño>" (ver importar-catalogo-aiven.js) — no hay un campo de sabor
+// estructurado, así que se detecta por substring. Si el nombre no matchea
+// ninguno de los dos, se usa el nombre completo como respaldo.
+function labelBorde(nombre) {
+  if (nombre.includes("Bocadillo")) return "Bocadillo";
+  if (nombre.includes("Queso")) return "Queso";
+  return nombre;
+}
+
 // Extraído porque ahora se repite tanto para los productos directos de un
-// grupo como para los de cada subcategoría.
-function FilaProductoPicker({ producto, cantidad, onCambiar }) {
+// grupo como para los de cada subcategoría. `bordes` solo viene no-vacío para
+// una pizza con al menos un borde de su mismo tamaño (ver bordesDe en el
+// padre) — se ofrece como un toggle por sabor de borde, nunca como un número.
+function FilaProductoPicker({ producto, cantidad, onCambiar, bordes = [], bordeActivo, onAlternarBorde }) {
   const disponible = Math.max(0, producto.disponible ?? 0);
   const agotado = disponible === 0;
   return (
-    <div className={`flex items-center justify-between px-3 py-2.5 ${agotado ? "opacity-50" : ""}`}>
-      <div>
-        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{producto.nombre}</p>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          ${producto.precio_venta.toLocaleString("es-CO")}
-          {" · "}
-          {agotado ? <span className="font-medium text-red-500">Agotado</span> : `Quedan ${disponible}`}
-        </p>
+    <div className={`px-3 py-2.5 ${agotado ? "opacity-50" : ""}`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{producto.nombre}</p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            ${producto.precio_venta.toLocaleString("es-CO")}
+            {" · "}
+            {agotado ? <span className="font-medium text-red-500">Agotado</span> : `Quedan ${disponible}`}
+          </p>
+        </div>
+        {/* Stepper -/cantidad/+ por producto — tocar "+" en un producto en 0 lo
+            agrega a `value`; llegar a 0 con "-" lo quita. "+" no deja pasar de
+            lo disponible (ver cambiarCantidad). */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            disabled={cantidad === 0}
+            onClick={() => onCambiar(producto, -1)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-600 disabled:opacity-30 active:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:active:bg-zinc-700"
+          >
+            <Minus size={14} />
+          </button>
+          <span className="w-5 text-center text-sm font-semibold text-zinc-900 dark:text-zinc-50">{cantidad}</span>
+          <button
+            type="button"
+            disabled={cantidad >= disponible}
+            onClick={() => onCambiar(producto, 1)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-orange-300 text-orange-600 disabled:opacity-30 active:bg-orange-50 dark:border-orange-800 dark:text-orange-400 dark:active:bg-orange-900/20"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
       </div>
-      {/* Stepper -/cantidad/+ por producto — tocar "+" en un producto en 0 lo
-          agrega a `value`; llegar a 0 con "-" lo quita. "+" no deja pasar de
-          lo disponible (ver cambiarCantidad). */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          disabled={cantidad === 0}
-          onClick={() => onCambiar(producto, -1)}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-600 disabled:opacity-30 active:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:active:bg-zinc-700"
-        >
-          <Minus size={14} />
-        </button>
-        <span className="w-5 text-center text-sm font-semibold text-zinc-900 dark:text-zinc-50">{cantidad}</span>
-        <button
-          type="button"
-          disabled={cantidad >= disponible}
-          onClick={() => onCambiar(producto, 1)}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-orange-300 text-orange-600 disabled:opacity-30 active:bg-orange-50 dark:border-orange-800 dark:text-orange-400 dark:active:bg-orange-900/20"
-        >
-          <Plus size={14} />
-        </button>
-      </div>
+      {cantidad > 0 && bordes.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5 pl-0.5">
+          {bordes.map((borde) => {
+            const activo = bordeActivo(producto.id_producto, borde.id_producto);
+            const sinStock = (borde.disponible ?? 0) <= 0 && !activo;
+            return (
+              <button
+                key={borde.id_producto}
+                type="button"
+                disabled={sinStock}
+                onClick={() => onAlternarBorde(producto, borde)}
+                title={sinStock ? "Sin borde disponible de este tamaño" : `$${borde.precio_venta.toLocaleString("es-CO")}`}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium disabled:opacity-30 ${
+                  activo
+                    ? "border-orange-400 bg-orange-100 text-orange-700 dark:border-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                    : "border-zinc-300 text-zinc-500 dark:border-zinc-600 dark:text-zinc-400"
+                }`}
+              >
+                + Borde {labelBorde(borde.nombre)}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

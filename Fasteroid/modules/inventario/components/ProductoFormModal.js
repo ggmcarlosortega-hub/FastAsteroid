@@ -2,8 +2,13 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Package, Banknote, Tag, Save } from "lucide-react";
+import { Package, Banknote, Tag, Save, Pizza } from "lucide-react";
 import MySwal from "../../../lib/swal";
+
+// Mismos 5 tamaños que TAMANOS_PIZZA en productos.service.js — solo aplica a
+// pizzas y bordes (ver SeleccionProductosPicker.js: el borde ofrecido para una
+// pizza se filtra por este campo, no por parsear el nombre).
+const TAMANOS_PIZZA = ["Jumbo", "Grande", "Mediana", "Pequeña", "Pizzeta"];
 
 // Crear/editar un producto del catálogo. El checkbox "Activo" solo aparece al
 // editar (uno recién creado siempre empieza activo) — desmarcarlo lo saca de
@@ -21,6 +26,7 @@ function ProductoFormContent({ producto, categorias, onSaved }) {
       precio_venta: producto?.precio_venta ?? "",
       activo: producto?.activo ?? true,
       id_categoria: producto?.categoria?.id_categoria ?? "",
+      tamano: producto?.tamano ?? "",
     },
   });
 
@@ -36,6 +42,7 @@ function ProductoFormContent({ producto, categorias, onSaved }) {
         precio_venta: Number(values.precio_venta),
         activo: values.activo,
         id_categoria: values.id_categoria || null,
+        tamano: values.tamano || null,
       }),
     });
     const data = await res.json();
@@ -95,6 +102,24 @@ function ProductoFormContent({ producto, categorias, onSaved }) {
           {categorias?.map((c) => (
             <option key={c.id_categoria} value={c.id_categoria}>
               {c.nombre}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <Pizza size={14} />
+          Tamaño (opcional — solo pizzas y bordes)
+        </label>
+        <select
+          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+          {...register("tamano")}
+        >
+          <option value="">Sin tamaño</option>
+          {TAMANOS_PIZZA.map((t) => (
+            <option key={t} value={t}>
+              {t}
             </option>
           ))}
         </select>

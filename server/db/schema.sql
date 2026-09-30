@@ -53,6 +53,11 @@ CREATE TABLE producto (
   id_producto     CHAR(36)      PRIMARY KEY,
   nombre          VARCHAR(255)  NOT NULL,
   precio_venta    DECIMAL(10,2) NOT NULL,
+  -- Tamaño de pizza (Jumbo/Grande/Mediana/Pequeña/Pizzeta) cuando aplica — NULL
+  -- para productos que no lo tienen. Permite ofrecer, al elegir una pizza, solo
+  -- los bordes del mismo tamaño (ver SeleccionProductosPicker.js) sin depender
+  -- de parsear el tamaño como palabra suelta dentro de `nombre`.
+  tamano          VARCHAR(20)   NULL,
   -- Un producto con ventas o compras asociadas no se borra (FK ON DELETE RESTRICT
   -- desde domicilio_producto/lote_compra) — se desactiva para sacarlo de la
   -- selección al crear domicilios sin romper el historial.

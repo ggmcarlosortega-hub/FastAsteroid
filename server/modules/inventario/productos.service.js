@@ -5,12 +5,17 @@ const { emitCambio } = require("../../lib/realtime");
 const inventarioService = require("./inventario.service");
 const lotesService = require("./lotes.service");
 
+// Tamaños de pizza reconocidos — un producto (pizza o borde) solo puede llevar
+// uno de estos en `tamano`, o ninguno (NULL) si no aplica (ej. "Porcion X").
+const TAMANOS_PIZZA = ["Jumbo", "Grande", "Mediana", "Pequeña", "Pizzeta"];
+
 function hydrate(row, disponibleMap, costoPromedioMap) {
   const costo_promedio = costoPromedioMap ? costoPromedioMap.get(row.id_producto) ?? null : undefined;
   return {
     id_producto: row.id_producto,
     nombre: row.nombre,
     precio_venta: Number(row.precio_venta),
+    tamano: row.tamano ?? null,
     activo: !!row.activo,
     fecha_creacion: row.fecha_creacion,
     categoria: row.id_categoria
@@ -38,7 +43,7 @@ function hydrate(row, disponibleMap, costoPromedioMap) {
 // Rigos" bajo "Pizzas") cuando la categoría del producto tiene una — así el
 // frontend puede agrupar en dos niveles sin una consulta aparte por categoría.
 const SELECT_CON_CATEGORIA = `
-  SELECT p.id_producto, p.nombre, p.precio_venta, p.activo, p.fecha_creacion,
+  SELECT p.id_producto, p.nombre, p.precio_venta, p.tamano, p.activo, p.fecha_creacion,
          c.id_categoria, c.nombre AS nombre_categoria,
          c.id_categoria_padre, cp.nombre AS nombre_categoria_padre
   FROM producto p
@@ -59,10 +64,19 @@ async function listProductos({ soloActivos = false } = {}) {
   return rows.map((row) => hydrate(row, disponibleMap, costoPromedioMap));
 }
 
-async function createProducto({ nombre, precio_venta, id_categoria }) {
+function validarTamano(tamano) {
+  tamano = tamano || null;
+  if (tamano != null && !TAMANOS_PIZZA.includes(tamano)) {
+    throw new ServiceError(`tamano debe ser uno de: ${TAMANOS_PIZZA.join(", ")}`, 400);
+  }
+  return tamano;
+}
+
+async function createProducto({ nombre, precio_venta, id_categoria, tamano }) {
   nombre = nombre?.trim();
   const precio = Number(precio_venta);
   id_categoria = id_categoria || null;
+  tamano = validarTamano(tamano);
 
   if (!nombre) {
     throw new ServiceError("nombre es obligatorio", 400);
@@ -73,8 +87,8 @@ async function createProducto({ nombre, precio_venta, id_categoria }) {
 
   const id_producto = crypto.randomUUID();
   await pool.execute(
-    "INSERT INTO producto (id_producto, nombre, precio_venta, id_categoria) VALUES (?, ?, ?, ?)",
-    [id_producto, nombre, precio, id_categoria]
+    "INSERT INTO producto (id_producto, nombre, precio_venta, id_categoria, tamano) VALUES (?, ?, ?, ?, ?)",
+    [id_producto, nombre, precio, id_categoria, tamano]
   );
 
   const [rows] = await pool.execute(`${SELECT_CON_CATEGORIA} WHERE p.id_producto = ?`, [id_producto]);
@@ -82,10 +96,11 @@ async function createProducto({ nombre, precio_venta, id_categoria }) {
   return hydrate(rows[0]);
 }
 
-async function updateProducto(id, { nombre, precio_venta, activo, id_categoria }) {
+async function updateProducto(id, { nombre, precio_venta, activo, id_categoria, tamano }) {
   nombre = nombre?.trim();
   const precio = Number(precio_venta);
   id_categoria = id_categoria || null;
+  tamano = validarTamano(tamano);
 
   if (!nombre) {
     throw new ServiceError("nombre es obligatorio", 400);
@@ -95,8 +110,8 @@ async function updateProducto(id, { nombre, precio_venta, activo, id_categoria }
   }
 
   const [result] = await pool.execute(
-    "UPDATE producto SET nombre = ?, precio_venta = ?, activo = ?, id_categoria = ? WHERE id_producto = ?",
-    [nombre, precio, activo !== false, id_categoria, id]
+    "UPDATE producto SET nombre = ?, precio_venta = ?, activo = ?, id_categoria = ?, tamano = ? WHERE id_producto = ?",
+    [nombre, precio, activo !== false, id_categoria, tamano, id]
   );
   if (result.affectedRows === 0) {
     throw new ServiceError("Producto no encontrado", 404);
@@ -124,7 +139,13 @@ async function createProductosBulk(lineas) {
     if (!Number.isFinite(precio) || precio <= 0) {
       throw new ServiceError(`Fila ${i + 1}: precio_venta debe ser mayor a 0`, 400);
     }
-    return { id_producto: crypto.randomUUID(), nombre, precio_venta: precio, id_categoria: linea.id_categoria || null };
+    return {
+      id_producto: crypto.randomUUID(),
+      nombre,
+      precio_venta: precio,
+      id_categoria: linea.id_categoria || null,
+      tamano: validarTamano(linea.tamano),
+    };
   });
 
   const conexion = await pool.getConnection();
@@ -132,8 +153,8 @@ async function createProductosBulk(lineas) {
     await conexion.beginTransaction();
     for (const linea of limpias) {
       await conexion.execute(
-        "INSERT INTO producto (id_producto, nombre, precio_venta, id_categoria) VALUES (?, ?, ?, ?)",
-        [linea.id_producto, linea.nombre, linea.precio_venta, linea.id_categoria]
+        "INSERT INTO producto (id_producto, nombre, precio_venta, id_categoria, tamano) VALUES (?, ?, ?, ?, ?)",
+        [linea.id_producto, linea.nombre, linea.precio_venta, linea.id_categoria, linea.tamano]
       );
     }
     await conexion.commit();
