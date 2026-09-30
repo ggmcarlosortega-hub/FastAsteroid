@@ -131,14 +131,14 @@ export function useInventarioAdmin() {
   }
 
   async function handleNuevaCategoria() {
-    const creada = await openCategoriaFormModal();
+    const creada = await openCategoriaFormModal(null, categorias);
     if (!creada) return;
     await toastGuardado("Categoría creada");
     cargar();
   }
 
   async function handleEditarCategoria(categoria) {
-    const actualizada = await openCategoriaFormModal(categoria);
+    const actualizada = await openCategoriaFormModal(categoria, categorias);
     if (!actualizada) return;
     await toastGuardado("Categoría actualizada");
     cargar();

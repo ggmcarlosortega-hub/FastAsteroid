@@ -21,6 +21,66 @@ const FILTROS_ACTIVO = [
   { id: "inactivos", label: "Inactivos" },
 ];
 
+// Una fila de la tabla de Inventario — extraída porque ahora se repite tanto
+// para los productos directos de un grupo como para los de cada subcategoría.
+function FilaInventario({ item }) {
+  return (
+    <tr>
+      <td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-50">{item.nombre}</td>
+      <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">{item.comprado}</td>
+      <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">{item.vendido}</td>
+      <td
+        className={`px-5 py-3 font-semibold ${
+          item.inventario <= 0 ? "text-red-600 dark:text-red-400" : "text-zinc-900 dark:text-zinc-50"
+        }`}
+      >
+        {item.inventario}
+      </td>
+    </tr>
+  );
+}
+
+// Extraído para no duplicar el markup entre los productos "directos" de un
+// grupo y los de cada subcategoría (ver pestaña "Productos" más abajo).
+function ListaProductos({ productos, onEditar }) {
+  return (
+    <div className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
+      {productos.map((p) => (
+        <div key={p.id_producto} className="flex items-center justify-between px-5 py-3">
+          <div>
+            <p className="flex items-center gap-2 font-medium text-zinc-900 dark:text-zinc-50">
+              {p.nombre}
+              {!p.activo && (
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                  Inactivo
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              ${p.precio_venta.toLocaleString("es-CO")}
+              {" · "}
+              {p.margen != null ? (
+                <span className={p.margen >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                  Margen ${Math.round(p.margen).toLocaleString("es-CO")} ({((p.margen / p.precio_venta) * 100).toFixed(0)}%)
+                </span>
+              ) : (
+                <span className="text-zinc-400">Sin costo registrado</span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={() => onEditar(p)}
+            className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            title="Editar"
+          >
+            <Pencil size={16} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function InventarioPage() {
   const {
     tab,
@@ -60,6 +120,18 @@ export default function InventarioPage() {
     if (filtroActivo === "inactivos") return !p.activo;
     return true;
   });
+
+  // Lista indentada para la pestaña Categorías: cada categoría raíz seguida
+  // de sus subcategorías (si tiene), ambas en orden alfabético.
+  const categoriasOrdenadas = [];
+  for (const raiz of categorias.filter((c) => c.id_categoria_padre == null).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))) {
+    categoriasOrdenadas.push({ ...raiz, esSubcategoria: false });
+    for (const hija of categorias
+      .filter((c) => c.id_categoria_padre === raiz.id_categoria)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))) {
+      categoriasOrdenadas.push({ ...hija, esSubcategoria: true });
+    }
+  }
 
   return (
     <div>
@@ -149,44 +221,21 @@ export default function InventarioPage() {
           )}
 
           {/* Agrupado por categoría (agruparPorCategoria.js) — mismo helper que
-              usa la pestaña Inventario, para que ambas se vean consistentes. */}
+              usa la pestaña Inventario, para que ambas se vean consistentes.
+              Cuando el grupo tiene subcategorías (ej. "Pizzas" con "Rigos",
+              "Hawaiana"...), cada una se lista aparte dentro del mismo grupo. */}
           {agruparPorCategoria(productosFiltrados).map((grupo) => (
             <div key={grupo.id_categoria ?? "sin-categoria"} className="mt-4 first:mt-3">
               <h3 className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">{grupo.nombre}</h3>
-              <div className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
-                {grupo.items.map((p) => (
-                  <div key={p.id_producto} className="flex items-center justify-between px-5 py-3">
-                    <div>
-                      <p className="flex items-center gap-2 font-medium text-zinc-900 dark:text-zinc-50">
-                        {p.nombre}
-                        {!p.activo && (
-                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                            Inactivo
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                        ${p.precio_venta.toLocaleString("es-CO")}
-                        {" · "}
-                        {p.margen != null ? (
-                          <span className={p.margen >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
-                            Margen ${Math.round(p.margen).toLocaleString("es-CO")} ({((p.margen / p.precio_venta) * 100).toFixed(0)}%)
-                          </span>
-                        ) : (
-                          <span className="text-zinc-400">Sin costo registrado</span>
-                        )}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleEditarProducto(p)}
-                      className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-                      title="Editar"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
+              {grupo.items.length > 0 && (
+                <ListaProductos productos={grupo.items} onEditar={handleEditarProducto} />
+              )}
+              {grupo.subcategorias.map((sub) => (
+                <div key={sub.id_categoria} className="mt-3">
+                  <h4 className="mb-1.5 pl-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">{sub.nombre}</h4>
+                  <ListaProductos productos={sub.items} onEditar={handleEditarProducto} />
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -210,9 +259,20 @@ export default function InventarioPage() {
             {categorias.length === 0 && (
               <p className="p-6 text-center text-sm text-zinc-400">No hay categorías registradas todavía.</p>
             )}
-            {categorias.map((c) => (
-              <div key={c.id_categoria} className="flex items-center justify-between px-5 py-3">
-                <p className="font-medium text-zinc-900 dark:text-zinc-50">{c.nombre}</p>
+            {categoriasOrdenadas.map((c) => (
+              <div
+                key={c.id_categoria}
+                className={`flex items-center justify-between px-5 py-3 ${c.esSubcategoria ? "pl-10" : ""}`}
+              >
+                <p
+                  className={
+                    c.esSubcategoria
+                      ? "text-sm text-zinc-600 dark:text-zinc-400"
+                      : "font-medium text-zinc-900 dark:text-zinc-50"
+                  }
+                >
+                  {c.nombre}
+                </p>
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleEditarCategoria(c)}
@@ -416,7 +476,8 @@ export default function InventarioPage() {
               )}
               {/* Mismo helper de agrupación que la pestaña Productos — una fila
                   de encabezado por categoría en vez de un <h3>, ya que acá
-                  estamos dentro de una tabla. */}
+                  estamos dentro de una tabla. Con subcategorías (ej. "Pizzas"),
+                  cada una gana su propia sub-fila de encabezado, más angosta. */}
               {agruparPorCategoria(inventario).map((grupo) => (
                 <Fragment key={grupo.id_categoria ?? "sin-categoria"}>
                   <tr className="bg-zinc-50 dark:bg-zinc-800/50">
@@ -425,18 +486,19 @@ export default function InventarioPage() {
                     </td>
                   </tr>
                   {grupo.items.map((i) => (
-                    <tr key={i.id_producto}>
-                      <td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-50">{i.nombre}</td>
-                      <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">{i.comprado}</td>
-                      <td className="px-5 py-3 text-zinc-600 dark:text-zinc-300">{i.vendido}</td>
-                      <td
-                        className={`px-5 py-3 font-semibold ${
-                          i.inventario <= 0 ? "text-red-600 dark:text-red-400" : "text-zinc-900 dark:text-zinc-50"
-                        }`}
-                      >
-                        {i.inventario}
-                      </td>
-                    </tr>
+                    <FilaInventario key={i.id_producto} item={i} />
+                  ))}
+                  {grupo.subcategorias.map((sub) => (
+                    <Fragment key={sub.id_categoria}>
+                      <tr>
+                        <td colSpan={4} className="px-5 py-1.5 pl-8 text-xs font-medium text-zinc-400 dark:text-zinc-500">
+                          {sub.nombre}
+                        </td>
+                      </tr>
+                      {sub.items.map((i) => (
+                        <FilaInventario key={i.id_producto} item={i} />
+                      ))}
+                    </Fragment>
                   ))}
                 </Fragment>
               ))}

@@ -13,7 +13,16 @@ function hydrate(row, disponibleMap, costoPromedioMap) {
     precio_venta: Number(row.precio_venta),
     activo: !!row.activo,
     fecha_creacion: row.fecha_creacion,
-    categoria: row.id_categoria ? { id_categoria: row.id_categoria, nombre: row.nombre_categoria } : null,
+    categoria: row.id_categoria
+      ? {
+          id_categoria: row.id_categoria,
+          nombre: row.nombre_categoria,
+          categoria_padre:
+            row.id_categoria_padre != null
+              ? { id_categoria: row.id_categoria_padre, nombre: row.nombre_categoria_padre }
+              : null,
+        }
+      : null,
     // Solo se calcula cuando listProductos() lo pide (ver soloActivos) — el picker de
     // productos al crear un domicilio lo usa para no dejar vender más de lo que hay.
     ...(disponibleMap ? { disponible: disponibleMap.get(row.id_producto) ?? 0 } : {}),
@@ -25,11 +34,16 @@ function hydrate(row, disponibleMap, costoPromedioMap) {
   };
 }
 
+// El segundo LEFT JOIN trae la categoría padre (subcategorías, ej. "Pizzas
+// Rigos" bajo "Pizzas") cuando la categoría del producto tiene una — así el
+// frontend puede agrupar en dos niveles sin una consulta aparte por categoría.
 const SELECT_CON_CATEGORIA = `
   SELECT p.id_producto, p.nombre, p.precio_venta, p.activo, p.fecha_creacion,
-         c.id_categoria, c.nombre AS nombre_categoria
+         c.id_categoria, c.nombre AS nombre_categoria,
+         c.id_categoria_padre, cp.nombre AS nombre_categoria_padre
   FROM producto p
   LEFT JOIN categoria_producto c ON c.id_categoria = p.id_categoria
+  LEFT JOIN categoria_producto cp ON cp.id_categoria = c.id_categoria_padre
 `;
 
 // soloActivos=true es lo que usa el selector de productos al crear un domicilio —

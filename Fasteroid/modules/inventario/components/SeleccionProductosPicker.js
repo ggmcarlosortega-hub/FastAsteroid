@@ -51,41 +51,79 @@ export default function SeleccionProductosPicker({ value, onChange, error }) {
 
   // Agrupar por categoría para que el picker sea más fácil de recorrer con un
   // catálogo grande — "Sin categoría" (id_categoria null) siempre va al final.
+  // Dos niveles cuando la categoría del producto tiene padre (ej. "Pizzas
+  // Rigos" bajo "Pizzas"): el producto cae en el acordeón de "Pizzas", pero
+  // dentro de su propia subcategoría en vez de directo en `productos`.
   const gruposCompletos = [];
   if (productos) {
     const porId = new Map();
     for (const producto of productos) {
-      const clave = producto.categoria?.id_categoria ?? null;
+      const categoria = producto.categoria;
+      const padre = categoria?.categoria_padre ?? null;
+      const clave = padre ? padre.id_categoria : categoria?.id_categoria ?? null;
       if (!porId.has(clave)) {
-        porId.set(clave, { clave, nombre: producto.categoria?.nombre ?? "Sin categoría", productos: [] });
+        porId.set(clave, {
+          clave,
+          nombre: padre ? padre.nombre : categoria?.nombre ?? "Sin categoría",
+          productos: [],
+          subcategoriasMap: new Map(),
+        });
       }
-      porId.get(clave).productos.push(producto);
+      const grupo = porId.get(clave);
+      if (padre) {
+        if (!grupo.subcategoriasMap.has(categoria.id_categoria)) {
+          grupo.subcategoriasMap.set(categoria.id_categoria, {
+            clave: categoria.id_categoria,
+            nombre: categoria.nombre,
+            productos: [],
+          });
+        }
+        grupo.subcategoriasMap.get(categoria.id_categoria).productos.push(producto);
+      } else {
+        grupo.productos.push(producto);
+      }
     }
     const sinCategoria = porId.get(null);
     porId.delete(null);
-    gruposCompletos.push(...porId.values());
-    if (sinCategoria) gruposCompletos.push(sinCategoria);
+    for (const grupo of porId.values()) {
+      gruposCompletos.push({ ...grupo, subcategorias: [...grupo.subcategoriasMap.values()] });
+    }
+    if (sinCategoria) gruposCompletos.push({ ...sinCategoria, subcategorias: [] });
   }
 
-  // Con búsqueda activa: solo quedan categorías con al menos un match (por nombre
-  // de producto o de la propia categoría), y dentro de ellas solo los productos
-  // que matchean. Sin búsqueda, se muestra el catálogo completo agrupado.
+  // Con búsqueda activa: solo quedan categorías (o subcategorías) con al menos un
+  // match (por nombre de producto o de la propia categoría), y dentro de ellas
+  // solo los productos que matchean. Sin búsqueda, se muestra el catálogo
+  // completo agrupado.
+  function filtrarProductos(nombreCategoria, listaProductos) {
+    const categoriaMatchea = nombreCategoria.toLowerCase().includes(query);
+    return categoriaMatchea ? listaProductos : listaProductos.filter((p) => p.nombre.toLowerCase().includes(query));
+  }
+
   const grupos = query
     ? gruposCompletos
         .map((grupo) => {
           const categoriaMatchea = grupo.nombre.toLowerCase().includes(query);
-          const productosFiltrados = categoriaMatchea
-            ? grupo.productos
-            : grupo.productos.filter((p) => p.nombre.toLowerCase().includes(query));
-          return { ...grupo, productos: productosFiltrados };
+          const subcategorias = grupo.subcategorias
+            .map((sub) => ({ ...sub, productos: categoriaMatchea ? sub.productos : filtrarProductos(sub.nombre, sub.productos) }))
+            .filter((sub) => sub.productos.length > 0);
+          return {
+            ...grupo,
+            productos: filtrarProductos(grupo.nombre, grupo.productos),
+            subcategorias,
+          };
         })
-        .filter((grupo) => grupo.productos.length > 0)
+        .filter((grupo) => grupo.productos.length > 0 || grupo.subcategorias.length > 0)
     : gruposCompletos;
+
+  function todosLosProductosDe(grupo) {
+    return [...grupo.productos, ...grupo.subcategorias.flatMap((sub) => sub.productos)];
+  }
 
   function estaExpandida(grupo) {
     if (tocadas.has(grupo.clave)) return tocadas.get(grupo.clave);
     if (query) return true;
-    if (grupo.productos.some((p) => cantidadDe(p.id_producto) > 0)) return true;
+    if (todosLosProductosDe(grupo).some((p) => cantidadDe(p.id_producto) > 0)) return true;
     return false;
   }
 
@@ -127,7 +165,7 @@ export default function SeleccionProductosPicker({ value, onChange, error }) {
       <div className="flex flex-col gap-3">
         {grupos.map((grupo) => {
           const abierta = estaExpandida(grupo);
-          const elegidosEnGrupo = grupo.productos.filter((p) => cantidadDe(p.id_producto) > 0).length;
+          const elegidosEnGrupo = todosLosProductosDe(grupo).filter((p) => cantidadDe(p.id_producto) > 0).length;
           return (
             <div
               key={grupo.nombre}
@@ -149,55 +187,39 @@ export default function SeleccionProductosPicker({ value, onChange, error }) {
                 )}
               </button>
               {abierta && (
-                <div className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
-                  {grupo.productos.map((producto) => {
-                    const cantidad = cantidadDe(producto.id_producto);
-                    const disponible = Math.max(0, producto.disponible ?? 0);
-                    const agotado = disponible === 0;
-                    return (
-                      <div
-                        key={producto.id_producto}
-                        className={`flex items-center justify-between px-3 py-2.5 ${agotado ? "opacity-50" : ""}`}
-                      >
-                        <div>
-                          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{producto.nombre}</p>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                            ${producto.precio_venta.toLocaleString("es-CO")}
-                            {" · "}
-                            {agotado ? (
-                              <span className="font-medium text-red-500">Agotado</span>
-                            ) : (
-                              `Quedan ${disponible}`
-                            )}
-                          </p>
-                        </div>
-                        {/* Stepper -/cantidad/+ por producto — tocar "+" en un producto en
-                            0 lo agrega a `value`; llegar a 0 con "-" lo quita. "+" no deja
-                            pasar de lo disponible (ver cambiarCantidad). */}
-                        <div className="flex items-center gap-3">
-                          <button
-                            type="button"
-                            disabled={cantidad === 0}
-                            onClick={() => cambiarCantidad(producto, -1)}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-600 disabled:opacity-30 active:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:active:bg-zinc-700"
-                          >
-                            <Minus size={14} />
-                          </button>
-                          <span className="w-5 text-center text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                            {cantidad}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={cantidad >= disponible}
-                            onClick={() => cambiarCantidad(producto, 1)}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-orange-300 text-orange-600 disabled:opacity-30 active:bg-orange-50 dark:border-orange-800 dark:text-orange-400 dark:active:bg-orange-900/20"
-                          >
-                            <Plus size={14} />
-                          </button>
-                        </div>
+                <div className="flex flex-col">
+                  {grupo.productos.length > 0 && (
+                    <div className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+                      {grupo.productos.map((producto) => (
+                        <FilaProductoPicker
+                          key={producto.id_producto}
+                          producto={producto}
+                          cantidad={cantidadDe(producto.id_producto)}
+                          onCambiar={cambiarCantidad}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {/* Subcategorías (ej. "Rigos", "Hawaiana" dentro de "Pizzas"): cada
+                      una gana su propia subcabecera dentro del mismo acordeón, en vez
+                      de un acordeón anidado — más simple de recorrer con el dedo. */}
+                  {grupo.subcategorias.map((sub) => (
+                    <div key={sub.clave}>
+                      <p className="border-t border-zinc-200 bg-zinc-50/60 px-3 py-1.5 text-[11px] font-medium text-zinc-400 dark:border-zinc-800 dark:bg-zinc-800/30 dark:text-zinc-500">
+                        {sub.nombre}
+                      </p>
+                      <div className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+                        {sub.productos.map((producto) => (
+                          <FilaProductoPicker
+                            key={producto.id_producto}
+                            producto={producto}
+                            cantidad={cantidadDe(producto.id_producto)}
+                            onCambiar={cambiarCantidad}
+                          />
+                        ))}
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -206,6 +228,47 @@ export default function SeleccionProductosPicker({ value, onChange, error }) {
       </div>
 
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}
+
+// Extraído porque ahora se repite tanto para los productos directos de un
+// grupo como para los de cada subcategoría.
+function FilaProductoPicker({ producto, cantidad, onCambiar }) {
+  const disponible = Math.max(0, producto.disponible ?? 0);
+  const agotado = disponible === 0;
+  return (
+    <div className={`flex items-center justify-between px-3 py-2.5 ${agotado ? "opacity-50" : ""}`}>
+      <div>
+        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{producto.nombre}</p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          ${producto.precio_venta.toLocaleString("es-CO")}
+          {" · "}
+          {agotado ? <span className="font-medium text-red-500">Agotado</span> : `Quedan ${disponible}`}
+        </p>
+      </div>
+      {/* Stepper -/cantidad/+ por producto — tocar "+" en un producto en 0 lo
+          agrega a `value`; llegar a 0 con "-" lo quita. "+" no deja pasar de
+          lo disponible (ver cambiarCantidad). */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          disabled={cantidad === 0}
+          onClick={() => onCambiar(producto, -1)}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-600 disabled:opacity-30 active:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:active:bg-zinc-700"
+        >
+          <Minus size={14} />
+        </button>
+        <span className="w-5 text-center text-sm font-semibold text-zinc-900 dark:text-zinc-50">{cantidad}</span>
+        <button
+          type="button"
+          disabled={cantidad >= disponible}
+          onClick={() => onCambiar(producto, 1)}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-orange-300 text-orange-600 disabled:opacity-30 active:bg-orange-50 dark:border-orange-800 dark:text-orange-400 dark:active:bg-orange-900/20"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
     </div>
   );
 }

@@ -8,7 +8,13 @@ import MySwal from "../../../lib/swal";
 // Crear/editar una categoría de producto — catálogo aparte, mismo patrón que
 // ProveedorFormModal.js. Borrar una categoría no borra productos (ver
 // categorias.service.js), así que este modal no necesita advertir sobre eso.
-function CategoriaFormContent({ categoria, onSaved }) {
+//
+// `todasLasCategorias`: para el selector de "Categoría padre" — solo se
+// ofrecen categorías raíz (sin padre propio, ver categorias.service.js:
+// una subcategoría no puede a su vez tener subcategorías) y, al editar, nunca
+// la propia categoría ni ninguna que ya tenga subcategorías hijas (eso
+// crearía un tercer nivel, y el backend lo rechazaría de todos modos).
+function CategoriaFormContent({ categoria, todasLasCategorias, onSaved }) {
   const isEdit = Boolean(categoria);
   const [serverError, setServerError] = useState(null);
   const {
@@ -16,8 +22,16 @@ function CategoriaFormContent({ categoria, onSaved }) {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm({
-    defaultValues: { nombre: categoria?.nombre ?? "" },
+    defaultValues: {
+      nombre: categoria?.nombre ?? "",
+      id_categoria_padre: categoria?.id_categoria_padre ?? "",
+    },
   });
+
+  const tieneHijos = todasLasCategorias.some((c) => c.id_categoria_padre === categoria?.id_categoria);
+  const opcionesPadre = todasLasCategorias.filter(
+    (c) => c.id_categoria_padre == null && c.id_categoria !== categoria?.id_categoria && !tieneHijos
+  );
 
   async function onSubmit(values) {
     setServerError(null);
@@ -26,7 +40,10 @@ function CategoriaFormContent({ categoria, onSaved }) {
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
+      body: JSON.stringify({
+        nombre: values.nombre,
+        id_categoria_padre: values.id_categoria_padre || null,
+      }),
     });
     const data = await res.json();
 
@@ -52,6 +69,29 @@ function CategoriaFormContent({ categoria, onSaved }) {
         {errors.nombre && <p className="mt-1 text-xs text-red-500">{errors.nombre.message}</p>}
       </div>
 
+      {tieneHijos ? (
+        <p className="text-xs text-zinc-400">
+          Esta categoría ya tiene subcategorías propias, así que no puede convertirse en subcategoría de otra.
+        </p>
+      ) : (
+        <div>
+          <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Categoría padre (opcional)
+          </label>
+          <select
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+            {...register("id_categoria_padre")}
+          >
+            <option value="">Ninguna (categoría de nivel superior)</option>
+            {opcionesPadre.map((c) => (
+              <option key={c.id_categoria} value={c.id_categoria}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {serverError && <p className="text-sm text-red-500">{serverError}</p>}
 
       <div className="mt-2 flex justify-end gap-2">
@@ -75,7 +115,7 @@ function CategoriaFormContent({ categoria, onSaved }) {
   );
 }
 
-export function openCategoriaFormModal(categoria = null) {
+export function openCategoriaFormModal(categoria = null, todasLasCategorias = []) {
   return new Promise((resolve) => {
     let resolved = false;
     MySwal.fire({
@@ -83,6 +123,7 @@ export function openCategoriaFormModal(categoria = null) {
       html: (
         <CategoriaFormContent
           categoria={categoria}
+          todasLasCategorias={todasLasCategorias}
           onSaved={(data) => {
             resolved = true;
             resolve(data);
