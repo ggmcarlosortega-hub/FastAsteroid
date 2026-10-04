@@ -265,3 +265,15 @@ CREATE TABLE registro_mantenimiento (
     FOREIGN KEY (id_vehiculo) REFERENCES vehiculo(id_vehiculo)
     ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Aprendizaje del OCR: texto leído en una comanda -> producto o municipio que el
+-- domiciliario confirmó. Se usa antes del emparejamiento aproximado.
+CREATE TABLE ocr_aprendizaje (
+  id_aprendizaje  CHAR(36)      PRIMARY KEY,
+  tipo            ENUM('producto', 'municipio') NOT NULL,
+  texto_clave     VARCHAR(255)  NOT NULL,
+  id_referencia   CHAR(36)      NOT NULL,
+  veces           INT           NOT NULL DEFAULT 1,
+  ultima_vez      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY ocr_aprendizaje_tipo_texto (tipo, texto_clave)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -18,6 +18,7 @@ const mantenimientoRoutes = require("./routes/mantenimiento.routes");
 const vehiculosRoutes = require("./routes/vehiculos.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 const balanceRoutes = require("./routes/balance.routes");
+const ocrRoutes = require("./routes/ocr.routes");
 
 const app = express();
 
@@ -67,6 +68,7 @@ app.use("/api/mantenimiento", mantenimientoRoutes);
 app.use("/api/vehiculos", vehiculosRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/balance", balanceRoutes);
+app.use("/api/ocr", ocrRoutes);
 
 // Middleware de error centralizado: cualquier error no capturado en una ruta cae
 // acá en vez de tumbar el proceso de Node. Se documenta en detalle en

@@ -14,7 +14,7 @@ import {
   Loader2,
   Plus,
 } from "lucide-react";
-import { analizarComanda } from "../logic/comandaProductos";
+import { analizarComanda, clave } from "../logic/comandaProductos";
 import { getCurrentPositionAsync } from "../logic/geolocation";
 import { comprimirImagen } from "../logic/imagenUtil";
 import { leerTextoComanda } from "../../../lib/ocr";
@@ -37,11 +37,12 @@ const VOLVER = Symbol("volver");
 // mano. Nada se guarda aquí — el resultado solo prellena el paso de revisión.
 async function leerComanda(dataUrl) {
   const texto = await leerTextoComanda(dataUrl);
-  const [catalogo, municipios] = await Promise.all([
+  const [catalogo, municipios, aprendizaje] = await Promise.all([
     fetch("/api/productos?activos=1").then((res) => res.json()).catch(() => []),
     fetch("/api/municipios").then((res) => res.json()).catch(() => []),
+    fetch("/api/ocr/aprendizaje").then((res) => res.json()).catch(() => []),
   ]);
-  const analisis = analizarComanda(texto, catalogo, municipios);
+  const analisis = analizarComanda(texto, catalogo, municipios, aprendizaje);
   return {
     telefono: analisis.telefono,
     telefonoValido: analisis.telefonoValido,
@@ -59,6 +60,7 @@ async function leerComanda(dataUrl) {
         precio_venta: l.precio_venta,
       })),
     municipios,
+    lineasSinCoincidencia: analisis.lineasSinCoincidencia,
   };
 }
 
@@ -92,6 +94,7 @@ function CapturaStepContent({ onListo }) {
         totalCuadra: null,
         lineasSugeridas: [],
         municipios: [],
+        lineasSinCoincidencia: [],
       }));
       onListo({ foto: dataUrl, ...parsed });
     };
@@ -291,6 +294,11 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
       precio: precioNum,
       id_municipio: municipioSeleccionado?.id_municipio ?? null,
       recargo_domicilio: recargo,
+      aprendizaje: {
+        sinCoincidencia: valoresIniciales.lineasSinCoincidencia ?? [],
+        productosElegidos: lineas.map((l) => ({ id_producto: l.id_producto, precio: l.precio_venta })),
+        municipio: municipioSeleccionado ? { id_municipio: municipioSeleccionado.id_municipio, recargo: Number(municipioSeleccionado.recargo_domicilio) } : null,
+      },
     });
   }
 
@@ -702,6 +710,43 @@ function openEspacioStep(espaciosOcupados) {
 
 // --- Orquestador ---
 
+// Aprende de lo que el domiciliario confirmó. Una línea que el OCR no reconoció se
+// empareja con un producto elegido solo si tiene exactamente su mismo precio; un
+// importe igual al recargo de un municipio aprende el municipio. Ante cualquier duda
+// no se guarda nada.
+function entradasDeAprendizaje(aprendizaje) {
+  if (!aprendizaje) return [];
+  const entradas = [];
+  const usados = new Set();
+  for (const linea of aprendizaje.sinCoincidencia ?? []) {
+    const texto = clave(linea.descripcion);
+    if (!texto) continue;
+    const candidatos = (aprendizaje.productosElegidos ?? []).filter(
+      (p) => p.precio != null && Number(p.precio) === Number(linea.importe) && !usados.has(p.id_producto)
+    );
+    if (candidatos.length === 1) {
+      usados.add(candidatos[0].id_producto);
+      entradas.push({ tipo: "producto", texto_clave: texto, id_referencia: candidatos[0].id_producto });
+      continue;
+    }
+    const municipio = aprendizaje.municipio;
+    if (municipio && municipio.recargo === Number(linea.importe)) {
+      entradas.push({ tipo: "municipio", texto_clave: texto, id_referencia: municipio.id_municipio });
+    }
+  }
+  return entradas;
+}
+
+function enviarAprendizaje(datos) {
+  const entradas = entradasDeAprendizaje(datos.aprendizaje);
+  if (entradas.length === 0) return;
+  fetch("/api/ocr/aprendizaje", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ entradas }),
+  }).catch(() => {});
+}
+
 export async function openEscanearComandaModal(espaciosOcupados, ubicacionRecogida) {
   let datosOCR = null;
   let clienteUbicacion = null;
@@ -776,6 +821,7 @@ export async function openEscanearComandaModal(espaciosOcupados, ubicacionRecogi
       continue;
     }
 
+    enviarAprendizaje(datosOCR);
     return data;
   }
 }

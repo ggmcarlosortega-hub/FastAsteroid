@@ -24,6 +24,11 @@ function sinTildes(texto) {
   return texto.normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 
+// Llave con la que se guarda y se busca un texto leído en el aprendizaje del OCR.
+export function clave(texto) {
+  return normalizar(texto);
+}
+
 function normalizar(texto) {
   return sinTildes(texto)
     .toUpperCase()
@@ -124,9 +129,12 @@ function detectarAdicionPorNombre(textoOCR, municipios) {
 // Adición del domicilio: la línea del ticket cuyo nombre es un municipio de la app
 // (CAREPA URBANA, REPOSO, BRIGADA...). Se elige el municipio que mejor coincida; si
 // ninguno coincide completo, no hay adición detectada y la línea se trata normal.
-export function detectarAdicion(lineas, municipios) {
+export function detectarAdicion(lineas, municipios, aprendidos = new Map()) {
   let mejor = null;
   for (const linea of lineas) {
+    const idAprendido = aprendidos.get(clave(linea.descripcion));
+    const municipioAprendido = idAprendido && municipios.find((m) => m.id_municipio === idAprendido);
+    if (municipioAprendido) return { linea, municipio: municipioAprendido };
     for (const municipio of municipios) {
       const puntaje = puntajeMunicipio(linea.descripcion, municipio.nombre);
       if (puntaje < 1) continue;
@@ -166,15 +174,22 @@ export function puntajeProducto(descripcion, nombreProducto) {
 // Para cada línea leída, el producto del catálogo con mejor puntaje. Solo se acepta
 // si el puntaje supera el umbral: por debajo, la línea queda sin producto y el
 // domiciliario la elige a mano (nunca se inventa un producto).
-export function emparejarConCatalogo(lineas, productos, umbral = 0.8) {
+export function emparejarConCatalogo(lineas, productos, umbral = 0.8, aprendidos = new Map()) {
   return lineas.map((linea) => {
     let mejor = null;
     let mejorPuntaje = 0;
-    for (const producto of productos) {
-      const puntaje = puntajeProducto(linea.descripcion, producto.nombre);
-      if (puntaje > mejorPuntaje) {
-        mejorPuntaje = puntaje;
-        mejor = producto;
+    const idAprendido = aprendidos.get(clave(linea.descripcion));
+    const aprendido = idAprendido && productos.find((p) => p.id_producto === idAprendido);
+    if (aprendido) {
+      mejor = aprendido;
+      mejorPuntaje = 1;
+    } else {
+      for (const producto of productos) {
+        const puntaje = puntajeProducto(linea.descripcion, producto.nombre);
+        if (puntaje > mejorPuntaje) {
+          mejorPuntaje = puntaje;
+          mejor = producto;
+        }
       }
     }
     const aceptado = mejor && mejorPuntaje >= umbral;
@@ -197,14 +212,17 @@ export function emparejarConCatalogo(lineas, productos, umbral = 0.8) {
 // número, y no debe prellenarse como teléfono del cliente.
 const TELEFONOS_NEGOCIO = ["3206877467"];
 
-export function analizarComanda(textoOCR, productos, municipios = []) {
+// `aprendizaje`: lista de { tipo, texto_clave, id_referencia } de confirmaciones previas.
+export function analizarComanda(textoOCR, productos, municipios = [], aprendizaje = []) {
   const cabecera = parseComandaText(textoOCR);
   if (TELEFONOS_NEGOCIO.includes(cabecera.telefono)) cabecera.telefono = "";
+  const aprendidosProducto = new Map(aprendizaje.filter((a) => a.tipo === "producto").map((a) => [a.texto_clave, a.id_referencia]));
+  const aprendidosMunicipio = new Map(aprendizaje.filter((a) => a.tipo === "municipio").map((a) => [a.texto_clave, a.id_referencia]));
   const { lineas: todasLasLineas } = leerLineasComanda(textoOCR);
-  const conImporte = detectarAdicion(todasLasLineas, municipios);
+  const conImporte = detectarAdicion(todasLasLineas, municipios, aprendidosMunicipio);
   const adicion = conImporte ?? detectarAdicionPorNombre(textoOCR, municipios);
   const lineas = conImporte ? todasLasLineas.filter((l) => l !== conImporte.linea) : todasLasLineas;
-  const emparejadas = emparejarConCatalogo(lineas, productos);
+  const emparejadas = emparejarConCatalogo(lineas, productos, 0.8, aprendidosProducto);
   const importeAdicion = conImporte ? conImporte.linea.importe : null;
   const sumaLineas = lineas.reduce((suma, l) => suma + l.importe, 0) + (importeAdicion ?? 0);
   const precio = cabecera.precio === "" ? null : cabecera.precio;
@@ -227,6 +245,9 @@ export function analizarComanda(textoOCR, productos, municipios = []) {
         }
       : null,
     lineas: emparejadas,
+    lineasSinCoincidencia: emparejadas
+      .filter((l) => !l.id_producto)
+      .map((l) => ({ descripcion: l.descripcion, importe: l.importe })),
     totalCuadra,
     sinProductosEmparejados: emparejadas.length > 0 && emparejadas.every((l) => !l.id_producto),
   };
