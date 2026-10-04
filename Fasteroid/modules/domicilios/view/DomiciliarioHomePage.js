@@ -109,7 +109,7 @@ export default function DomiciliarioHomePage() {
                   </p>
                   <p className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                     <MapPin size={12} />
-                    {domicilio.ubicacion.alias_direccion}
+                    {domicilio.ubicacion?.alias_direccion ?? "Sin ubicación, se define al entregar"}
                   </p>
                   <p className="mt-1 flex items-start gap-1.5 text-sm text-zinc-600 dark:text-zinc-300">
                     <Package size={14} className="mt-0.5 shrink-0" />
@@ -123,15 +123,26 @@ export default function DomiciliarioHomePage() {
                       <Phone size={12} />
                       Llamar
                     </a>
-                    <a
-                      href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
-                    >
-                      <Map size={12} />
-                      Ver en Maps
-                    </a>
+                    {domicilio.cliente.telefono_alterno && (
+                      <a
+                        href={`tel:${domicilio.cliente.telefono_alterno}`}
+                        className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
+                      >
+                        <Phone size={12} />
+                        Llamar alterno
+                      </a>
+                    )}
+                    {domicilio.ubicacion && (
+                      <a
+                        href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
+                      >
+                        <Map size={12} />
+                        Ver en Maps
+                      </a>
+                    )}
                   </div>
                 </div>
                 <button
@@ -168,7 +179,7 @@ export default function DomiciliarioHomePage() {
                 </p>
                 <p className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                   <MapPin size={12} />
-                  {domicilio.ubicacion.alias_direccion}
+                  {domicilio.ubicacion?.alias_direccion ?? "Sin ubicación, se define al entregar"}
                 </p>
               </Link>
               <span className="flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
@@ -194,15 +205,26 @@ export default function DomiciliarioHomePage() {
                 <Phone size={12} />
                 Llamar
               </a>
-              <a
-                href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
-              >
-                <Map size={12} />
-                Ver en Maps
-              </a>
+              {domicilio.cliente.telefono_alterno && (
+                <a
+                  href={`tel:${domicilio.cliente.telefono_alterno}`}
+                  className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
+                >
+                  <Phone size={12} />
+                  Llamar alterno
+                </a>
+              )}
+              {domicilio.ubicacion && (
+                <a
+                  href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-orange-600 hover:text-orange-700"
+                >
+                  <Map size={12} />
+                  Ver en Maps
+                </a>
+              )}
             </div>
 
             <div className="mt-3 flex gap-2">

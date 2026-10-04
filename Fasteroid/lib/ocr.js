@@ -78,6 +78,33 @@ export async function leerMejorTexto(dataUrl) {
   }
 }
 
+// Para comandas con el estándar de foto (ticket completo y vertical, ver
+// CapturaStepContent): una sola pasada de lectura, porque las cuatro rotaciones
+// cuestan ~4 veces el tiempo y casi nunca hacen falta. Solo si la lectura sale casi
+// vacía se prueban las rotaciones, por si la foto llegó de lado.
+const MINIMO_TEXTO_VERTICAL = 60;
+
+export async function leerTextoComanda(dataUrl) {
+  const { createWorker } = await import("tesseract.js");
+  const worker = await createWorker("spa");
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: "4" });
+
+    const primera = await intentarLectura(worker, dataUrl);
+    if (primera.text.trim().length >= MINIMO_TEXTO_VERTICAL) return primera.text;
+
+    let mejor = primera;
+    for (const grados of [90, 180, 270]) {
+      const girada = await rotarImagen(dataUrl, grados);
+      const intento = await intentarLectura(worker, girada);
+      if (intento.confidence > mejor.confidence) mejor = intento;
+    }
+    return mejor.text;
+  } finally {
+    await worker.terminate();
+  }
+}
+
 // Solo para compras: se comprobó contra una factura real (formato DIAN, tabla
 // con encabezados sobre fondo gris) que el modo "4" (una sola columna de texto)
 // lee bien la prosa — nombres, direcciones — pero pierde por completo los

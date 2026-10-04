@@ -5,6 +5,7 @@ const { ServiceError } = require("../../lib/service-error");
 const { haversineKm } = require("../../lib/haversine");
 const { emitCambio } = require("../../lib/realtime");
 const inventarioService = require("../inventario/inventario.service");
+const { resolverTelefonoPrincipal } = require("../clientes/clientes.service");
 
 // El baúl físico tiene 3 secciones con 3 espacios cada una (ver imagenes/Baul.png
 // en la raíz del repo) — 9 espacios en total, numerados 1-9. Mantener sincronizado
@@ -14,7 +15,7 @@ const ESPACIOS_VALIDOS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const METODOS_PAGO_VALIDOS = ["Efectivo", "Transferencia", "Ambos"];
 // Debajo de esto, la ubicación GPS capturada al entregar se considera "la misma"
 // que una ya guardada del cliente (evita duplicados, sección 22 del documento).
-const UMBRAL_UBICACION_DUPLICADA_KM = 0.1;
+const UMBRAL_UBICACION_DUPLICADA_KM = 0.03;
 
 // Se listan explícitamente las columnas de domicilio (en vez de d.*) para no
 // exponer espacio_activo, que es un detalle interno de MySQL (ver schema.sql) sin
@@ -25,16 +26,19 @@ const SELECT_CON_RELACIONES = `
     d.productos, d.precio, d.fecha_hora_creacion, d.fecha_hora_entrega,
     d.valor_recaudado, d.valor_efectivo, d.valor_transferencia, d.metodo_pago,
     d.estado, d.distancia_km, d.latitud_recogida, d.longitud_recogida, d.espacio_baul,
-    d.foto_productos_url, d.motivo_cancelacion,
-    c.telefono AS c_telefono, c.nombre AS c_nombre, c.fecha_primer_registro AS c_fecha_primer_registro,
+    d.foto_productos_url, d.motivo_cancelacion, d.id_municipio, d.recargo_domicilio,
+    md.nombre AS md_nombre,
+    c.telefono AS c_telefono, c.telefono_alterno AS c_telefono_alterno, c.nombre AS c_nombre,
+    c.fecha_primer_registro AS c_fecha_primer_registro,
     u.id_ubicacion AS u_id_ubicacion, u.telefono_cliente AS u_telefono_cliente,
     u.latitud AS u_latitud, u.longitud AS u_longitud, u.alias_direccion AS u_alias_direccion,
     m.id_municipio AS m_id_municipio, m.nombre AS m_nombre, m.recargo_domicilio AS m_recargo_domicilio,
     dom.telefono AS dom_telefono, dom.nombre AS dom_nombre
   FROM domicilio d
   JOIN cliente c ON c.telefono = d.telefono_cliente
-  JOIN ubicacion u ON u.id_ubicacion = d.id_ubicacion
+  LEFT JOIN ubicacion u ON u.id_ubicacion = d.id_ubicacion
   LEFT JOIN municipio m ON m.id_municipio = u.id_municipio
+  LEFT JOIN municipio md ON md.id_municipio = d.id_municipio
   LEFT JOIN usuario dom ON dom.telefono = d.telefono_domiciliario
 `;
 
@@ -62,21 +66,29 @@ function hydrate(row) {
     espacio_baul: row.espacio_baul,
     foto_productos_url: row.foto_productos_url,
     motivo_cancelacion: row.motivo_cancelacion,
+    id_municipio: row.id_municipio,
+    municipio_adicion_nombre: row.md_nombre,
+    recargo_domicilio: row.recargo_domicilio != null ? Number(row.recargo_domicilio) : null,
     cliente: {
       telefono: row.c_telefono,
+      telefono_alterno: row.c_telefono_alterno,
       nombre: row.c_nombre,
       fecha_primer_registro: row.c_fecha_primer_registro,
     },
-    ubicacion: {
-      id_ubicacion: row.u_id_ubicacion,
-      telefono_cliente: row.u_telefono_cliente,
-      latitud: row.u_latitud,
-      longitud: row.u_longitud,
-      alias_direccion: row.u_alias_direccion,
-      municipio: row.m_id_municipio
-        ? { id_municipio: row.m_id_municipio, nombre: row.m_nombre, recargo_domicilio: Number(row.m_recargo_domicilio) }
-        : null,
-    },
+    // NULL mientras el cliente nuevo no tiene ubicación guardada: la ubicación real
+    // se define al entregar (ver marcarEntregado).
+    ubicacion: row.u_id_ubicacion
+      ? {
+          id_ubicacion: row.u_id_ubicacion,
+          telefono_cliente: row.u_telefono_cliente,
+          latitud: row.u_latitud,
+          longitud: row.u_longitud,
+          alias_direccion: row.u_alias_direccion,
+          municipio: row.m_id_municipio
+            ? { id_municipio: row.m_id_municipio, nombre: row.m_nombre, recargo_domicilio: Number(row.m_recargo_domicilio) }
+            : null,
+        }
+      : null,
     // NULL mientras el domicilio está en la lista de espera compartida, sin tomar
     // todavía por ningún domiciliario (ver comentario de la tabla en schema.sql).
     domiciliario: row.dom_telefono ? { telefono: row.dom_telefono, nombre: row.dom_nombre } : null,
@@ -310,9 +322,26 @@ async function insertarLineasProducto(id_domicilio, lineas, conn = pool) {
 // disponible lo toma después con recogerDomicilio(). Cuando lo crea el propio
 // domiciliario, lo tiene en mano de una vez y elige el espacio ahí mismo, arrancando
 // directo en "En_curso" como antes.
+function validarProductosSinCatalogo(items) {
+  if (items == null) return [];
+  if (!Array.isArray(items)) {
+    throw new ServiceError("productos_sin_catalogo debe ser una lista", 400);
+  }
+  return items.map((item, i) => {
+    const descripcion = String(item?.descripcion ?? "").trim();
+    const precio = Number(item?.precio);
+    if (!descripcion) {
+      throw new ServiceError(`Producto sin catálogo ${i + 1}: falta la descripción`, 400);
+    }
+    if (!Number.isFinite(precio) || precio <= 0) {
+      throw new ServiceError(`Producto sin catálogo "${descripcion}": el precio debe ser mayor a 0`, 400);
+    }
+    return { descripcion, precio };
+  });
+}
+
 async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = false } = {}) {
-  const telefono_cliente = data.telefono_cliente?.trim();
-  const id_ubicacion = data.id_ubicacion?.trim();
+  const telefonoRecibido = data.telefono_cliente?.trim();
   const precio = Number(data.precio);
   const foto_productos_url = data.foto_productos_url ?? null;
 
@@ -321,8 +350,31 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
   if (!creadoPorAdmin && !telefonoDomiciliario) {
     throw new ServiceError("telefono_domiciliario es obligatorio", 400);
   }
-  if (!telefono_cliente || !id_ubicacion) {
-    throw new ServiceError("cliente y ubicación son obligatorios", 400);
+  if (!telefonoRecibido) {
+    throw new ServiceError("cliente es obligatorio", 400);
+  }
+  // Se guarda siempre con el teléfono principal, aunque el pedido llegue por el alterno.
+  const telefono_cliente = await resolverTelefonoPrincipal(telefonoRecibido);
+  if (!telefono_cliente) {
+    throw new ServiceError("El cliente indicado no existe", 400);
+  }
+  // Sin ubicación guardada (cliente nuevo): el trayecto empieza sin un punto fijo y la
+  // ubicación se define al entregar.
+  const id_ubicacion = data.id_ubicacion?.trim() || null;
+  // Adición de domicilio (recargo del municipio): el precio que llega ya incluye este
+  // valor; se guarda aparte para poder ajustarlo al entregar.
+  let id_municipio = data.id_municipio?.trim() || null;
+  let recargo_domicilio = data.recargo_domicilio == null ? null : Number(data.recargo_domicilio);
+  if (recargo_domicilio != null && (!Number.isFinite(recargo_domicilio) || recargo_domicilio < 0)) {
+    throw new ServiceError("recargo_domicilio debe ser 0 o mayor", 400);
+  }
+  if (id_municipio) {
+    const [municipioRows] = await pool.execute("SELECT id_municipio FROM municipio WHERE id_municipio = ?", [
+      id_municipio,
+    ]);
+    if (!municipioRows[0]) {
+      throw new ServiceError("El municipio indicado no existe", 400);
+    }
   }
   if (!Number.isFinite(precio) || precio <= 0) {
     throw new ServiceError("precio debe ser mayor a 0", 400);
@@ -342,7 +394,23 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
   try {
     await conn.beginTransaction();
 
-    const { productos, lineas } = await resolverLineasProductos(data.productos_lineas, conn);
+    // Productos leídos de la comanda que no están en el catálogo: no tienen fila en
+    // domicilio_producto, pero sí van en la descripción del pedido. Su valor ya viene
+    // sumado en `precio` (lo confirma quien registra el pedido).
+    const productosSinCatalogo = validarProductosSinCatalogo(data.productos_sin_catalogo);
+    const tieneCatalogo = Array.isArray(data.productos_lineas) && data.productos_lineas.length > 0;
+    if (!tieneCatalogo && productosSinCatalogo.length === 0) {
+      throw new ServiceError("Elige al menos un producto", 400);
+    }
+    const { productos: productosCatalogo, lineas } = tieneCatalogo
+      ? await resolverLineasProductos(data.productos_lineas, conn)
+      : { productos: "", lineas: [] };
+    const productos = [
+      productosCatalogo,
+      ...productosSinCatalogo.map((p) => `1x ${p.descripcion} (sin catálogo, $${p.precio})`),
+    ]
+      .filter(Boolean)
+      .join(", ");
 
     if (!creadoPorAdmin) {
       const [domiciliarioRows] = await conn.execute("SELECT rol FROM usuario WHERE telefono = ?", [
@@ -353,12 +421,25 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
       }
     }
 
-    const [ubicacionRows] = await conn.execute(
-      "SELECT telefono_cliente FROM ubicacion WHERE id_ubicacion = ?",
-      [id_ubicacion]
-    );
-    if (!ubicacionRows[0] || ubicacionRows[0].telefono_cliente !== telefono_cliente) {
-      throw new ServiceError("La ubicación no pertenece a ese cliente", 400);
+    if (id_ubicacion) {
+      const [ubicacionRows] = await conn.execute(
+        "SELECT telefono_cliente, id_municipio FROM ubicacion WHERE id_ubicacion = ?",
+        [id_ubicacion]
+      );
+      if (!ubicacionRows[0] || ubicacionRows[0].telefono_cliente !== telefono_cliente) {
+        throw new ServiceError("La ubicación no pertenece a ese cliente", 400);
+      }
+      // Un lugar que ya tiene municipio lleva su adición automáticamente.
+      if (!id_municipio && ubicacionRows[0].id_municipio) {
+        id_municipio = ubicacionRows[0].id_municipio;
+        if (recargo_domicilio == null) {
+          const [municipioRows] = await conn.execute(
+            "SELECT recargo_domicilio FROM municipio WHERE id_municipio = ?",
+            [id_municipio]
+          );
+          recargo_domicilio = Number(municipioRows[0]?.recargo_domicilio ?? 0);
+        }
+      }
     }
 
     const id_domicilio = crypto.randomUUID();
@@ -368,9 +449,18 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
       // espera compartida, sin nadie asignado todavía.
       await conn.execute(
         `INSERT INTO domicilio
-           (id_domicilio, telefono_cliente, id_ubicacion, productos, precio, estado, foto_productos_url)
-         VALUES (?, ?, ?, ?, ?, 'Asignado', ?)`,
-        [id_domicilio, telefono_cliente, id_ubicacion, productos, precio, foto_productos_url]
+           (id_domicilio, telefono_cliente, id_ubicacion, productos, precio, estado, foto_productos_url, id_municipio, recargo_domicilio)
+         VALUES (?, ?, ?, ?, ?, 'Asignado', ?, ?, ?)`,
+        [
+          id_domicilio,
+          telefono_cliente,
+          id_ubicacion,
+          productos,
+          precio,
+          foto_productos_url,
+          id_municipio,
+          recargo_domicilio,
+        ]
       );
       await insertarLineasProducto(id_domicilio, lineas, conn);
       await conn.commit();
@@ -414,8 +504,8 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
     try {
       await conn.execute(
         `INSERT INTO domicilio
-           (id_domicilio, telefono_cliente, telefono_domiciliario, id_ubicacion, productos, precio, espacio_baul, foto_productos_url, latitud_recogida, longitud_recogida)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id_domicilio, telefono_cliente, telefono_domiciliario, id_ubicacion, productos, precio, espacio_baul, foto_productos_url, latitud_recogida, longitud_recogida, id_municipio, recargo_domicilio)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id_domicilio,
           telefono_cliente,
@@ -427,6 +517,8 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
           foto_productos_url,
           latitudRecogida,
           longitudRecogida,
+          id_municipio,
+          recargo_domicilio,
         ]
       );
     } catch (err) {
@@ -677,6 +769,18 @@ async function marcarEntregado(id, telefonoDomiciliario, data) {
         )
       : null;
 
+  // El recargo de domicilio se puede confirmar o cambiar al entregar. El precio del
+  // pedido incluye el recargo, así que un cambio lo ajusta. Si el domicilio tiene
+  // municipio, el nuevo valor queda como recargo de ese municipio para los pedidos
+  // futuros, y la ubicación queda vinculada a ese municipio si todavía no lo tenía.
+  const recargoAnterior = Number(domicilioActivo.recargo_domicilio ?? 0);
+  const recargoConfirmado = data.recargo_domicilio != null;
+  const recargoNuevo = recargoConfirmado ? Number(data.recargo_domicilio) : recargoAnterior;
+  if (!Number.isFinite(recargoNuevo) || recargoNuevo < 0) {
+    throw new ServiceError("recargo_domicilio debe ser 0 o mayor", 400);
+  }
+  const precioNuevo = Number(domicilioActivo.precio) - recargoAnterior + recargoNuevo;
+
   // Transacción explícita: si el UPDATE del domicilio falla después de haber
   // creado una ubicación nueva, el rollback deshace ambas cosas — no queda una
   // ubicación "huérfana" sin domicilio que la haya usado.
@@ -691,13 +795,34 @@ async function marcarEntregado(id, telefonoDomiciliario, data) {
       data.nombre_lugar
     );
 
+    if (domicilioActivo.id_municipio && recargoConfirmado) {
+      await conn.execute("UPDATE municipio SET recargo_domicilio = ? WHERE id_municipio = ?", [
+        recargoNuevo,
+        domicilioActivo.id_municipio,
+      ]);
+      await conn.execute(
+        "UPDATE ubicacion SET id_municipio = ? WHERE id_ubicacion = ? AND id_municipio IS NULL",
+        [domicilioActivo.id_municipio, idUbicacionEntrega]
+      );
+    }
+
     await conn.execute(
       `UPDATE domicilio
        SET estado = 'Entregado', fecha_hora_entrega = NOW(), metodo_pago = ?,
            valor_recaudado = ?, valor_efectivo = ?, valor_transferencia = ?,
-           distancia_km = ?, id_ubicacion = ?
+           distancia_km = ?, id_ubicacion = ?, precio = ?, recargo_domicilio = ?
        WHERE id_domicilio = ?`,
-      [metodo_pago, valor_recaudado, valor_efectivo, valor_transferencia, distancia_km, idUbicacionEntrega, id]
+      [
+        metodo_pago,
+        valor_recaudado,
+        valor_efectivo,
+        valor_transferencia,
+        distancia_km,
+        idUbicacionEntrega,
+        precioNuevo,
+        recargoNuevo,
+        id,
+      ]
     );
 
     await conn.commit();

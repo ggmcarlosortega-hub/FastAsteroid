@@ -110,7 +110,7 @@ export default function AdminDomiciliosPage() {
                   <p className="font-medium text-zinc-900 dark:text-zinc-50">{domicilio.cliente.nombre}</p>
                   <p className="mt-1 flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                     <MapPin size={12} />
-                    {domicilio.ubicacion.alias_direccion}
+                    {domicilio.ubicacion?.alias_direccion ?? "Sin ubicación, se define al entregar"}
                   </p>
                   <p className="mt-1 flex items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-300">
                     <Package size={13} />
@@ -141,7 +141,7 @@ export default function AdminDomiciliosPage() {
               <p className="font-medium text-zinc-900 dark:text-zinc-50">{domicilio.cliente.nombre}</p>
               <p className="mt-1 flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                 <MapPin size={12} />
-                {domicilio.ubicacion.alias_direccion}
+                {domicilio.ubicacion?.alias_direccion ?? "Sin ubicación, se define al entregar"}
               </p>
               <p className="mt-1 flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
                 <User size={12} />

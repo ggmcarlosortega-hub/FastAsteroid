@@ -130,7 +130,7 @@ export function useDomiciliosActivos() {
       return;
     }
 
-    const valores = await openEntregarModal(domicilio.precio);
+    const valores = await openEntregarModal(domicilio.precio, domicilio.recargo_domicilio ?? 0);
     if (!valores) return;
 
     // distancia_km ya no se manda — el backend la calcula solo con Haversine

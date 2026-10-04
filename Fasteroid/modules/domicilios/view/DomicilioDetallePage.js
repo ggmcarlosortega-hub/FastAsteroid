@@ -127,24 +127,32 @@ export default function DomicilioDetallePage() {
             Llamar
           </a>
         </div>
-        <div className="flex items-center justify-between">
+        {domicilio.ubicacion ? (
+          <>
+            <div className="flex items-center justify-between">
+              <Dato icon={MapPin} label="Ubicación de entrega">
+                {domicilio.ubicacion.alias_direccion}
+                {domicilio.ubicacion.municipio && ` (${domicilio.ubicacion.municipio.nombre})`}
+              </Dato>
+              <a
+                href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                <Map size={13} />
+                Maps
+              </a>
+            </div>
+            <div className="sm:col-span-2">
+              <MapaUbicacion latitud={domicilio.ubicacion.latitud} longitud={domicilio.ubicacion.longitud} height={200} />
+            </div>
+          </>
+        ) : (
           <Dato icon={MapPin} label="Ubicación de entrega">
-            {domicilio.ubicacion.alias_direccion}
-            {domicilio.ubicacion.municipio && ` (${domicilio.ubicacion.municipio.nombre})`}
+            Sin ubicación guardada: se define con el GPS al entregar.
           </Dato>
-          <a
-            href={googleMapsUrl(domicilio.ubicacion.latitud, domicilio.ubicacion.longitud)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-          >
-            <Map size={13} />
-            Maps
-          </a>
-        </div>
-        <div className="sm:col-span-2">
-          <MapaUbicacion latitud={domicilio.ubicacion.latitud} longitud={domicilio.ubicacion.longitud} height={200} />
-        </div>
+        )}
         <Dato icon={Package} label="Productos">
           {domicilio.productos}
         </Dato>

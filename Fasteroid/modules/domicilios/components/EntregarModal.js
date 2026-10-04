@@ -13,7 +13,7 @@ function formatoCOP(valor) {
 // método de pago y el valor cobrado. La captura de la ubicación GPS real de la
 // entrega (para calcular la distancia recorrida en el backend) pasa ANTES de
 // abrir este modal (ver handleEntregar en useDomiciliosActivos.js), no acá.
-function EntregarFormContent({ precioSugerido, onSaved }) {
+function EntregarFormContent({ precioBase, recargoInicial, onSaved }) {
   const {
     register,
     handleSubmit,
@@ -23,11 +23,24 @@ function EntregarFormContent({ precioSugerido, onSaved }) {
   } = useForm({
     defaultValues: {
       metodo_pago: "Efectivo",
-      valor_recaudado: precioSugerido ?? "",
+      valor_recaudado: precioBase ?? "",
       valor_efectivo: "",
       valor_transferencia: "",
     },
   });
+  // La adición de domicilio forma parte del precio. Confirmarla o cambiarla aquí ajusta
+  // el total de este pedido y, al guardar, queda como recargo del municipio para los
+  // pedidos futuros (ver marcarEntregado en el backend).
+  const [recargo, setRecargo] = useState(recargoInicial ?? 0);
+  const precioSugerido =
+    precioBase == null ? null : precioBase - (recargoInicial ?? 0) + (Number(recargo) || 0);
+
+  function onCambiarRecargo(e) {
+    const valor = e.target.value;
+    setRecargo(valor);
+    const nuevoTotal = precioBase - (recargoInicial ?? 0) + (Number(valor) || 0);
+    if (watch("metodo_pago") !== "Ambos") setValue("valor_recaudado", String(nuevoTotal));
+  }
   // "Ambos" cambia el campo único "Valor cobrado" por dos campos — uno por
   // cada método — en vez de mandar un valor_recaudado aparte que podría no
   // cuadrar con la suma (el backend arma el total sumando los dos).
@@ -70,15 +83,21 @@ function EntregarFormContent({ precioSugerido, onSaved }) {
   const sumaCuadra = precioSugerido == null || sumaAmbos === precioSugerido;
 
   function onSubmit(values) {
+    const recargoDomicilio = Number(recargo) || 0;
     if (esAmbos) {
       onSaved({
         metodo_pago: values.metodo_pago,
         valor_efectivo: Number(values.valor_efectivo),
         valor_transferencia: Number(values.valor_transferencia),
+        recargo_domicilio: recargoDomicilio,
       });
       return;
     }
-    onSaved({ metodo_pago: values.metodo_pago, valor_recaudado: Number(values.valor_recaudado) });
+    onSaved({
+      metodo_pago: values.metodo_pago,
+      valor_recaudado: Number(values.valor_recaudado),
+      recargo_domicilio: recargoDomicilio,
+    });
   }
 
   return (
@@ -89,6 +108,23 @@ function EntregarFormContent({ precioSugerido, onSaved }) {
           Total del pedido: <span className="font-semibold">{formatoCOP(precioSugerido)}</span>
         </p>
       )}
+
+      <div>
+        <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          Adición de domicilio
+        </label>
+        <input
+          type="number"
+          min="0"
+          step="any"
+          value={recargo}
+          onChange={onCambiarRecargo}
+          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+        />
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          Si lo cambias, este pedido y los futuros de este municipio usan el nuevo valor.
+        </p>
+      </div>
 
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -203,14 +239,15 @@ function EntregarFormContent({ precioSugerido, onSaved }) {
   );
 }
 
-export function openEntregarModal(precioSugerido) {
+export function openEntregarModal(precioBase, recargoInicial = 0) {
   return new Promise((resolve) => {
     let resolved = false;
     MySwal.fire({
       title: "Marcar como entregado",
       html: (
         <EntregarFormContent
-          precioSugerido={precioSugerido}
+          precioBase={precioBase}
+          recargoInicial={recargoInicial}
           onSaved={(data) => {
             resolved = true;
             resolve(data);

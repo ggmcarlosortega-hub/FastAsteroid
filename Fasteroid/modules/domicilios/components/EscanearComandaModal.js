@@ -14,10 +14,10 @@ import {
   Loader2,
   Plus,
 } from "lucide-react";
-import { parseComandaText } from "../logic/comandaParser";
+import { analizarComanda } from "../logic/comandaProductos";
 import { getCurrentPositionAsync } from "../logic/geolocation";
 import { comprimirImagen } from "../logic/imagenUtil";
-import { leerMejorTexto } from "../../../lib/ocr";
+import { leerTextoComanda } from "../../../lib/ocr";
 import EspacioBaulSelector from "./EspacioBaulSelector";
 import SeleccionProductosPicker from "../../inventario/components/SeleccionProductosPicker";
 import { sumaLineas } from "../../inventario/logic/lineasProductos";
@@ -32,9 +32,36 @@ const VOLVER = Symbol("volver");
 // Lectura del OCR (reintento de 4 rotaciones, preprocesado a gris) extraída a
 // lib/ocr.js — es infraestructura genérica, no algo específico de comandas; el
 // nuevo escaneo de facturas de compra (EscanearCompraModal.js) la reutiliza.
+// Lee la comanda y la cruza con el catálogo activo: las líneas que coinciden llegan
+// ya como sugerencia de productos; las que no, se muestran aparte para elegirlas a
+// mano. Nada se guarda aquí — el resultado solo prellena el paso de revisión.
 async function leerComanda(dataUrl) {
-  const texto = await leerMejorTexto(dataUrl);
-  return parseComandaText(texto);
+  const texto = await leerTextoComanda(dataUrl);
+  const [catalogo, municipios] = await Promise.all([
+    fetch("/api/productos?activos=1").then((res) => res.json()).catch(() => []),
+    fetch("/api/municipios").then((res) => res.json()).catch(() => []),
+  ]);
+  const analisis = analizarComanda(texto, catalogo, municipios);
+  return {
+    telefono: analisis.telefono,
+    telefonoValido: analisis.telefonoValido,
+    nombre: "",
+    referencia: analisis.referencia,
+    precio: analisis.precio ?? "",
+    totalCuadra: analisis.totalCuadra,
+    adicion: analisis.adicion,
+    lineasSugeridas: analisis.lineas
+      .filter((l) => l.id_producto)
+      .map((l) => ({
+        id_producto: l.id_producto,
+        cantidad: l.cantidad,
+        nombre: l.nombre,
+        precio_venta: l.precio_venta,
+      })),
+    lineasSinCoincidencia: analisis.lineas
+      .filter((l) => !l.id_producto)
+      .map((l) => ({ descripcion: l.descripcion, importe: l.importe })),
+  };
 }
 
 // --- Paso 1: capturar la foto de la comanda y leerla ---
@@ -60,10 +87,13 @@ function CapturaStepContent({ onListo }) {
       // campos vacíos en vez de bloquear — el domiciliario los completa a mano.
       const parsed = await leerComanda(dataUrl).catch(() => ({
         telefono: "",
+        telefonoValido: false,
         nombre: "",
         referencia: "",
-        productos: "",
         precio: "",
+        totalCuadra: null,
+        lineasSugeridas: [],
+        lineasSinCoincidencia: [],
       }));
       onListo({ foto: dataUrl, ...parsed });
     };
@@ -81,10 +111,26 @@ function CapturaStepContent({ onListo }) {
 
   return (
     <div className="text-left">
-      <p className="mb-3 flex items-start gap-2 text-sm text-zinc-500 dark:text-zinc-400">
-        <Camera size={16} className="mt-0.5 shrink-0" />
-        Toma la foto lo más cerca, derecha y con buena luz posible, o busca una ya tomada — así se
-        lee mejor automáticamente. Siempre vas a poder revisar y corregir antes de guardar.
+      {/* Estándar de foto: el ticket térmico ocupa casi toda la imagen, en vertical.
+          Con esto el OCR lee en una sola pasada (ver leerTextoComanda en lib/ocr.js). */}
+      <div className="mb-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+        <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+          <Camera size={14} />
+          Así debe verse la foto
+        </p>
+        <div className="flex items-start gap-3">
+          <div className="flex aspect-[1/2.2] w-14 shrink-0 items-center justify-center rounded border-2 border-dashed border-orange-400 text-center text-[10px] leading-tight text-orange-600 dark:text-orange-400">
+            Ticket aquí
+          </div>
+          <ul className="flex list-disc flex-col gap-1 pl-4 text-xs text-zinc-500 dark:text-zinc-400">
+            <li>El ticket completo, de arriba abajo y en vertical.</li>
+            <li>Sobre una superficie plana, sin sombras ni reflejos.</li>
+            <li>Sin dedos, billetes ni papeles encima del ticket.</li>
+          </ul>
+        </div>
+      </div>
+      <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+        Siempre vas a poder revisar y corregir antes de guardar.
       </p>
 
       {/* Dos inputs ocultos: el de cámara lleva `capture="environment"` (abre la
@@ -196,7 +242,7 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
   // El OCR solo lee texto de la foto — no es confiable mapear eso a un producto
   // exacto del catálogo, así que acá siempre se elige a mano (igual que en "Nuevo
   // domicilio"), aunque el resto de los campos sí vengan pre-llenados por el OCR.
-  const [lineas, setLineas] = useState([]);
+  const [lineas, setLineas] = useState(valoresIniciales.lineasSugeridas ?? []);
   const [lineasError, setLineasError] = useState(null);
   // El precio que lee el OCR (de la línea TOTAL de la comanda) es solo un punto de
   // partida ANTES de elegir productos — precioTocado arranca en false siempre
@@ -208,18 +254,60 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
   const [precioTocado, setPrecioTocado] = useState(false);
   const [precioError, setPrecioError] = useState(null);
 
+  // Adición de domicilio (recargo): el valor de la comanda si lo trae, o el recargo
+  // guardado del municipio. Forma parte del precio del pedido. Se puede cambiar aquí
+  // y al entregar; el cambio queda para este pedido y para los futuros del municipio.
+  const adicion = valoresIniciales.adicion ?? null;
+  const [recargo, setRecargo] = useState(
+    adicion ? Number(adicion.importe_comanda ?? adicion.recargo_municipio) : 0
+  );
+
+  // Productos de la comanda que no están en el catálogo: se les pone su costo (el
+  // valor que leyó el OCR de arranque) para que el total del pedido sea real.
+  const [sinCatalogo, setSinCatalogo] = useState(() =>
+    (valoresIniciales.lineasSinCoincidencia ?? []).map((l) => ({
+      descripcion: l.descripcion,
+      precio: l.importe ?? "",
+    }))
+  );
+
+  function sumaSinCatalogo(items) {
+    return items.reduce((suma, item) => suma + (Number(item.precio) || 0), 0);
+  }
+
+  function precioSugerido(nuevasLineas, nuevoRecargo, nuevoSinCatalogo = sinCatalogo) {
+    return sumaLineas(nuevasLineas) + (Number(nuevoRecargo) || 0) + sumaSinCatalogo(nuevoSinCatalogo);
+  }
+
   function handleLineasChange(nuevasLineas) {
     setLineas(nuevasLineas);
     setLineasError(null);
     if (!precioTocado) {
-      const sugerido = sumaLineas(nuevasLineas);
+      const sugerido = precioSugerido(nuevasLineas, recargo);
+      setPrecio(sugerido > 0 ? String(sugerido) : "");
+    }
+  }
+
+  function handleRecargoChange(valor) {
+    setRecargo(valor);
+    if (!precioTocado) {
+      const sugerido = precioSugerido(lineas, valor);
+      setPrecio(sugerido > 0 ? String(sugerido) : "");
+    }
+  }
+
+  function handleSinCatalogoChange(indice, valor) {
+    const nuevo = sinCatalogo.map((item, i) => (i === indice ? { ...item, precio: valor } : item));
+    setSinCatalogo(nuevo);
+    if (!precioTocado) {
+      const sugerido = precioSugerido(lineas, recargo, nuevo);
       setPrecio(sugerido > 0 ? String(sugerido) : "");
     }
   }
 
   function onSubmit(values) {
     let valido = true;
-    if (lineas.length === 0) {
+    if (lineas.length === 0 && sinCatalogo.length === 0) {
       setLineasError("Elige al menos un producto");
       valido = false;
     }
@@ -230,10 +318,22 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
     }
     if (!valido) return;
 
+    const sinCatalogoValido = sinCatalogo.every((item) => Number(item.precio) > 0);
+    if (!sinCatalogoValido) {
+      setPrecioError("Pon el costo de cada producto que no está en el catálogo");
+      return;
+    }
+
     onConfirmar({
       ...values,
       productos_lineas: lineas.map((l) => ({ id_producto: l.id_producto, cantidad: l.cantidad })),
+      productos_sin_catalogo: sinCatalogo.map((item) => ({
+        descripcion: item.descripcion,
+        precio: Number(item.precio),
+      })),
       precio: precioNum,
+      id_municipio: adicion?.id_municipio ?? null,
+      recargo_domicilio: Number(recargo) || 0,
     });
   }
 
@@ -267,6 +367,11 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
           )}
         </div>
         {errors.telefono && <p className="mt-1 text-xs text-red-500">{errors.telefono.message}</p>}
+        {!/^3\d{9}$/.test(telefonoActual ?? "") && (
+          <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            El teléfono leído parece incompleto (un celular tiene 10 dígitos y empieza en 3). Revísalo.
+          </p>
+        )}
         {clienteEncontrado && (
           <p className="mt-1 flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
             <User size={12} />
@@ -303,7 +408,55 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
 
       {/* El OCR no elige productos del catálogo por sí solo — se escogen a mano
           acá, igual que en "Nuevo domicilio" (ver comentario más arriba). */}
+      {sinCatalogo.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            Productos de la comanda que no están en el catálogo. Ponles su costo para que el total sea real.
+          </p>
+          {sinCatalogo.map((item, indice) => (
+            <div key={`${item.descripcion}-${indice}`} className="flex items-center gap-2">
+              <span className="flex-1 truncate text-sm text-zinc-700 dark:text-zinc-300">{item.descripcion}</span>
+              <input
+                type="number"
+                min="1"
+                step="any"
+                value={item.precio}
+                onChange={(e) => handleSinCatalogoChange(indice, e.target.value)}
+                aria-label={`Costo de ${item.descripcion}`}
+                className="w-32 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      {valoresIniciales.totalCuadra === false && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          El total de la comanda no coincide con la suma de los productos leídos. Revisa la lista de productos.
+        </p>
+      )}
+
       <SeleccionProductosPicker value={lineas} onChange={handleLineasChange} error={lineasError} />
+
+      <div>
+        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <MapPin size={14} />
+          Adición de domicilio{adicion ? ` (${adicion.nombre})` : ""}
+        </label>
+        <input
+          type="number"
+          min="0"
+          step="any"
+          value={recargo}
+          onChange={(e) => handleRecargoChange(e.target.value)}
+          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+        />
+        {adicion?.importe_comanda != null && adicion.importe_comanda !== adicion.recargo_municipio && (
+          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+            La comanda marca ${adicion.importe_comanda.toLocaleString("es-CO")}; el municipio guarda $
+            {adicion.recargo_municipio.toLocaleString("es-CO")}.
+          </p>
+        )}
+      </div>
 
       {/* Precio autocalculado al elegir productos, editable si se negoció otro. */}
       <div>
@@ -491,7 +644,9 @@ async function resolverClienteYUbicacion(datos) {
     if (ubicacion === VOLVER) return VOLVER;
   }
 
-  if (!ubicacion) {
+  // Cliente sin ubicaciones guardadas: el pedido sale sin ubicación y la dirección se
+  // define al entregar, en vez de crear una ubicación ahora que quedaría duplicada.
+  if (!ubicacion && cliente.ubicaciones?.length > 0) {
     mostrarCargando("Capturando tu ubicación...");
     const posicion = await getCurrentPositionAsync();
     if (!posicion) {
@@ -652,10 +807,13 @@ export async function openEscanearComandaModal(espaciosOcupados, ubicacionRecogi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         telefono_cliente: clienteUbicacion.telefono_cliente,
-        id_ubicacion: clienteUbicacion.ubicacion.id_ubicacion,
+        id_ubicacion: clienteUbicacion.ubicacion?.id_ubicacion ?? null,
         ubicacion_recogida: ubicacionRecogida,
         productos_lineas: datosOCR.productos_lineas,
+        productos_sin_catalogo: datosOCR.productos_sin_catalogo,
         precio: Number(datosOCR.precio),
+        id_municipio: datosOCR.id_municipio,
+        recargo_domicilio: datosOCR.recargo_domicilio,
         espacio_baul: resultado.espacio_baul,
         foto_productos_url: datosOCR.foto,
       }),

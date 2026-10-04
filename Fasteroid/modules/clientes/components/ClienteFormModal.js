@@ -16,7 +16,11 @@ function ClienteFormContent({ cliente, onSaved }) {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm({
-    defaultValues: { telefono: cliente?.telefono ?? "", nombre: cliente?.nombre ?? "" },
+    defaultValues: {
+      telefono: cliente?.telefono ?? "",
+      telefono_alterno: cliente?.telefono_alterno ?? "",
+      nombre: cliente?.nombre ?? "",
+    },
   });
 
   async function onSubmit(values) {
@@ -53,6 +57,19 @@ function ClienteFormContent({ cliente, onSaved }) {
         {errors.telefono && (
           <p className="mt-1 text-xs text-red-500">{errors.telefono.message}</p>
         )}
+      </div>
+
+      <div>
+        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <Phone size={14} />
+          Teléfono alterno (opcional)
+        </label>
+        <input
+          placeholder="Quien recibe cuando el principal no está"
+          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+          {...register("telefono_alterno")}
+        />
+        <p className="mt-1 text-xs text-zinc-400">Comparte las mismas ubicaciones que el principal.</p>
       </div>
 
       <div>

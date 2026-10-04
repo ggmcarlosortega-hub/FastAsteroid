@@ -4,12 +4,12 @@ const { ServiceError } = require("../../lib/service-error");
 const { emitCambio } = require("../../lib/realtime");
 
 async function listClientes(q) {
-  const where = q ? "WHERE c.telefono LIKE ? OR c.nombre LIKE ?" : "";
-  const params = q ? [`%${q}%`, `%${q}%`] : [];
+  const where = q ? "WHERE c.telefono LIKE ? OR c.telefono_alterno LIKE ? OR c.nombre LIKE ?" : "";
+  const params = q ? [`%${q}%`, `%${q}%`, `%${q}%`] : [];
 
   const [rows] = await pool.execute(
     `SELECT
-       c.telefono, c.nombre, c.fecha_primer_registro,
+       c.telefono, c.telefono_alterno, c.nombre, c.fecha_primer_registro,
        (SELECT COUNT(*) FROM ubicacion u WHERE u.telefono_cliente = c.telefono) AS ubicaciones_count,
        (SELECT COUNT(*) FROM domicilio d WHERE d.telefono_cliente = c.telefono) AS domicilios_count
      FROM cliente c
@@ -20,22 +20,63 @@ async function listClientes(q) {
 
   return rows.map((r) => ({
     telefono: r.telefono,
+    telefono_alterno: r.telefono_alterno,
     nombre: r.nombre,
     fecha_primer_registro: r.fecha_primer_registro,
     _count: { ubicaciones: r.ubicaciones_count, domicilios: r.domicilios_count },
   }));
 }
 
-async function createCliente({ telefono, nombre }) {
+// Devuelve el teléfono principal del cliente al que pertenece `telefono` (sea el
+// principal o el alterno), o null si ningún cliente lo usa.
+async function resolverTelefonoPrincipal(telefono) {
+  const [rows] = await pool.execute(
+    "SELECT telefono FROM cliente WHERE telefono = ? OR telefono_alterno = ? LIMIT 1",
+    [telefono, telefono]
+  );
+  return rows[0]?.telefono ?? null;
+}
+
+// Un teléfono alterno no puede ser igual al principal ni estar usado por otro
+// cliente, ni como principal ni como alterno. `telefonoPropio` excluye al propio
+// cliente cuando se está editando (para que no choque consigo mismo).
+async function validarTelefonoAlterno(telefonoAlterno, telefonoPropio) {
+  if (!telefonoAlterno) return null;
+  if (telefonoAlterno === telefonoPropio) {
+    throw new ServiceError("El teléfono alterno no puede ser igual al principal", 400);
+  }
+  const [rows] = await pool.execute(
+    `SELECT telefono FROM cliente
+     WHERE (telefono = ? OR telefono_alterno = ?) AND telefono <> ? LIMIT 1`,
+    [telefonoAlterno, telefonoAlterno, telefonoPropio ?? ""]
+  );
+  if (rows[0]) {
+    throw new ServiceError("Ese teléfono alterno ya está registrado con otro cliente", 409);
+  }
+  return telefonoAlterno;
+}
+
+async function createCliente({ telefono, nombre, telefono_alterno }) {
   telefono = telefono?.trim();
   nombre = nombre?.trim();
+  telefono_alterno = telefono_alterno?.trim() || null;
 
   if (!telefono || !nombre) {
     throw new ServiceError("telefono y nombre son obligatorios", 400);
   }
 
+  await validarTelefonoAlterno(telefono_alterno, telefono);
+  const [yaComoAlterno] = await pool.execute("SELECT telefono FROM cliente WHERE telefono_alterno = ?", [telefono]);
+  if (yaComoAlterno[0]) {
+    throw new ServiceError("Ese teléfono ya está registrado como alterno de otro cliente", 409);
+  }
+
   try {
-    await pool.execute("INSERT INTO cliente (telefono, nombre) VALUES (?, ?)", [telefono, nombre]);
+    await pool.execute("INSERT INTO cliente (telefono, telefono_alterno, nombre) VALUES (?, ?, ?)", [
+      telefono,
+      telefono_alterno,
+      nombre,
+    ]);
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY") {
       throw new ServiceError("Ya existe un cliente con ese teléfono", 409);
@@ -44,7 +85,7 @@ async function createCliente({ telefono, nombre }) {
   }
 
   const [rows] = await pool.execute(
-    "SELECT telefono, nombre, fecha_primer_registro FROM cliente WHERE telefono = ?",
+    "SELECT telefono, telefono_alterno, nombre, fecha_primer_registro FROM cliente WHERE telefono = ?",
     [telefono]
   );
   emitCambio("clientes:changed");
@@ -52,14 +93,16 @@ async function createCliente({ telefono, nombre }) {
 }
 
 async function getCliente(telefono) {
+  const telefonoPrincipal = await resolverTelefonoPrincipal(telefono);
   const [clienteRows] = await pool.execute(
-    "SELECT telefono, nombre, fecha_primer_registro FROM cliente WHERE telefono = ?",
-    [telefono]
+    "SELECT telefono, telefono_alterno, nombre, fecha_primer_registro FROM cliente WHERE telefono = ?",
+    [telefonoPrincipal]
   );
   const cliente = clienteRows[0];
   if (!cliente) {
     throw new ServiceError("Cliente no encontrado", 404);
   }
+  telefono = telefonoPrincipal;
 
   const [ubicacionRows] = await pool.execute(
     `SELECT u.id_ubicacion, u.telefono_cliente, u.latitud, u.longitud, u.alias_direccion,
@@ -83,22 +126,25 @@ async function getCliente(telefono) {
   return { ...cliente, ubicaciones };
 }
 
-async function updateCliente(telefono, { nombre }) {
+async function updateCliente(telefono, { nombre, telefono_alterno }) {
   nombre = nombre?.trim();
   if (!nombre) {
     throw new ServiceError("nombre es obligatorio", 400);
   }
-
-  const [result] = await pool.execute("UPDATE cliente SET nombre = ? WHERE telefono = ?", [
-    nombre,
-    telefono,
-  ]);
+  const [result] =
+    telefono_alterno === undefined
+      ? await pool.execute("UPDATE cliente SET nombre = ? WHERE telefono = ?", [nombre, telefono])
+      : await pool.execute("UPDATE cliente SET nombre = ?, telefono_alterno = ? WHERE telefono = ?", [
+          nombre,
+          await validarTelefonoAlterno(telefono_alterno?.trim() || null, telefono),
+          telefono,
+        ]);
   if (result.affectedRows === 0) {
     throw new ServiceError("Cliente no encontrado", 404);
   }
 
   const [rows] = await pool.execute(
-    "SELECT telefono, nombre, fecha_primer_registro FROM cliente WHERE telefono = ?",
+    "SELECT telefono, telefono_alterno, nombre, fecha_primer_registro FROM cliente WHERE telefono = ?",
     [telefono]
   );
   emitCambio("clientes:changed");
@@ -123,7 +169,11 @@ async function deleteCliente(telefono) {
   emitCambio("clientes:changed");
 }
 
-async function addUbicacion(telefono, { alias_direccion, latitud, longitud, id_municipio }) {
+async function addUbicacion(telefonoRecibido, { alias_direccion, latitud, longitud, id_municipio }) {
+  const telefono = await resolverTelefonoPrincipal(telefonoRecibido);
+  if (!telefono) {
+    throw new ServiceError("Cliente no encontrado", 404);
+  }
   alias_direccion = alias_direccion?.trim();
   latitud = Number(latitud);
   longitud = Number(longitud);
@@ -227,4 +277,5 @@ module.exports = {
   addUbicacion,
   updateUbicacion,
   deleteUbicacion,
+  resolverTelefonoPrincipal,
 };

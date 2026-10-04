@@ -365,7 +365,15 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
       <div className="max-h-56 divide-y divide-zinc-200 overflow-y-auto rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
         {ubicaciones === null && <p className="p-4 text-center text-sm text-zinc-400">Cargando...</p>}
         {ubicaciones?.length === 0 && (
-          <p className="p-4 text-center text-sm text-zinc-400">Sin ubicaciones guardadas.</p>
+          <div className="flex flex-col items-center gap-2 p-4 text-center">
+            <p className="text-sm text-zinc-400">Sin ubicaciones guardadas.</p>
+            <button
+              onClick={() => onSelect(SIN_UBICACION)}
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              Continuar sin ubicación (se define al entregar)
+            </button>
+          </div>
         )}
         {ubicaciones?.map((ubicacion) =>
           editando?.id_ubicacion === ubicacion.id_ubicacion ? (
@@ -463,6 +471,7 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
 }
 
 const VOLVER = Symbol("volver");
+const SIN_UBICACION = { sinUbicacion: true, municipio: null };
 
 function openUbicacionStep(cliente) {
   return new Promise((resolve) => {

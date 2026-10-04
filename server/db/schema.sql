@@ -29,8 +29,12 @@ CREATE TABLE usuario (
 
 CREATE TABLE cliente (
   telefono              VARCHAR(20)  PRIMARY KEY,
+  -- Segundo número del mismo cliente (ej. quien recibe cuando el principal no está).
+  -- Apunta a las mismas ubicaciones: buscar por cualquiera de los dos da el mismo cliente.
+  telefono_alterno      VARCHAR(20)  NULL,
   nombre                VARCHAR(255) NOT NULL,
-  fecha_primer_registro DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+  fecha_primer_registro DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY cliente_telefono_alterno_unico (telefono_alterno)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Catálogo aparte, igual patrón que proveedor — un producto puede quedar sin
@@ -124,9 +128,14 @@ CREATE TABLE domicilio (
   id_domicilio           CHAR(36)       PRIMARY KEY,
   telefono_cliente       VARCHAR(20)    NOT NULL,
   telefono_domiciliario  VARCHAR(20)    NULL,
-  -- Se fija al crear el domicilio, pero se reemplaza al entregar por la ubicación GPS
-  -- real capturada en ese momento (sección 6 del documento unificado).
-  id_ubicacion           CHAR(36)       NOT NULL,
+  -- NULL cuando el cliente es nuevo y el pedido salió sin ubicación guardada: se
+  -- define al entregar, con la ubicación GPS real (sección 6 del documento unificado).
+  id_ubicacion           CHAR(36)       NULL,
+  -- Municipio de la adición (recargo) de este pedido y el valor que se sumó al precio.
+  -- El precio ya incluye el recargo; al entregar, un cambio de recargo ajusta el precio
+  -- y se guarda también en el municipio para los pedidos futuros.
+  id_municipio           CHAR(36)       NULL,
+  recargo_domicilio      DECIMAL(10,2)  NULL,
   productos               TEXT          NOT NULL,
   precio                  DECIMAL(10,2) NOT NULL,
   fecha_hora_creacion    DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -170,6 +179,9 @@ CREATE TABLE domicilio (
   CONSTRAINT domicilio_id_ubicacion_fkey
     FOREIGN KEY (id_ubicacion) REFERENCES ubicacion(id_ubicacion)
     ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT domicilio_municipio_fkey
+    FOREIGN KEY (id_municipio) REFERENCES municipio(id_municipio)
+    ON DELETE SET NULL ON UPDATE CASCADE,
 
   -- El baúl físico tiene 3 secciones con 3 espacios cada una (imagenes/Baul.png)
   -- — 9 espacios en total, numerados 1-9. Mantener sincronizado con
