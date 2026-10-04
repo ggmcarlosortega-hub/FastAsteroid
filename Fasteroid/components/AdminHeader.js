@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Swal from "../lib/swal";
-import { Rocket, Users, Bike, LayoutDashboard, LogOut, Boxes, IdCard, Wrench } from "lucide-react";
+import { Rocket, Users, Bike, LayoutDashboard, LogOut, Boxes, IdCard, Wrench, Scale } from "lucide-react";
 import MobileNavDrawer from "./MobileNavDrawer";
 
 // Mismos links en ambas vistas de la nav (fila horizontal de desktop y el
@@ -16,6 +16,7 @@ const ADMIN_LINKS = [
   { href: "/admin/inventario", icon: Boxes, titulo: "Inventario" },
   { href: "/admin/domiciliarios", icon: IdCard, titulo: "Domiciliarios" },
   { href: "/admin/mantenimiento", icon: Wrench, titulo: "Mantenimiento" },
+  { href: "/admin/balance", icon: Scale, titulo: "Balance" },
 ];
 
 export default function AdminHeader({ nombre }) {
