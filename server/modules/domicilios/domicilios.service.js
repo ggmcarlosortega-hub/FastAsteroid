@@ -25,6 +25,7 @@ const SELECT_CON_RELACIONES = `
     d.id_domicilio, d.telefono_cliente, d.telefono_domiciliario, d.id_ubicacion,
     d.productos, d.precio, d.fecha_hora_creacion, d.fecha_hora_entrega,
     d.valor_recaudado, d.valor_efectivo, d.valor_transferencia, d.metodo_pago,
+    d.efectivo_recibido, d.devuelta,
     d.estado, d.distancia_km, d.latitud_recogida, d.longitud_recogida, d.espacio_baul,
     d.foto_productos_url, d.motivo_cancelacion, d.id_municipio, d.recargo_domicilio,
     md.nombre AS md_nombre,
@@ -58,6 +59,8 @@ function hydrate(row) {
     valor_recaudado: row.valor_recaudado != null ? Number(row.valor_recaudado) : null,
     valor_efectivo: row.valor_efectivo != null ? Number(row.valor_efectivo) : null,
     valor_transferencia: row.valor_transferencia != null ? Number(row.valor_transferencia) : null,
+    efectivo_recibido: row.efectivo_recibido != null ? Number(row.efectivo_recibido) : null,
+    devuelta: row.devuelta != null ? Number(row.devuelta) : null,
     metodo_pago: row.metodo_pago,
     estado: row.estado,
     distancia_km: row.distancia_km,
@@ -790,6 +793,17 @@ async function marcarEntregado(id, telefonoDomiciliario, data) {
   }
   const precioNuevo = Number(domicilioActivo.precio) - recargoAnterior + recargoNuevo;
 
+  // Cobro en efectivo: si se indica lo recibido, debe alcanzar para lo que se cobra en
+  // efectivo; la devuelta es la diferencia.
+  const cobroEfectivo =
+    metodo_pago === "Ambos" ? valor_efectivo : metodo_pago === "Efectivo" ? valor_recaudado : 0;
+  const recibidoIndicado = data.efectivo_recibido != null && data.efectivo_recibido !== "";
+  const efectivoRecibido = recibidoIndicado ? Number(data.efectivo_recibido) : null;
+  if (efectivoRecibido != null && (!Number.isFinite(efectivoRecibido) || efectivoRecibido < cobroEfectivo)) {
+    throw new ServiceError("Lo recibido en efectivo no alcanza para cubrir el cobro", 400);
+  }
+  const devuelta = efectivoRecibido != null && cobroEfectivo > 0 ? efectivoRecibido - cobroEfectivo : null;
+
   // Transacción explícita: si el UPDATE del domicilio falla después de haber
   // creado una ubicación nueva, el rollback deshace ambas cosas — no queda una
   // ubicación "huérfana" sin domicilio que la haya usado.
@@ -819,7 +833,8 @@ async function marcarEntregado(id, telefonoDomiciliario, data) {
       `UPDATE domicilio
        SET estado = 'Entregado', fecha_hora_entrega = NOW(), metodo_pago = ?,
            valor_recaudado = ?, valor_efectivo = ?, valor_transferencia = ?,
-           distancia_km = ?, id_ubicacion = ?, precio = ?, recargo_domicilio = ?
+           distancia_km = ?, id_ubicacion = ?, precio = ?, recargo_domicilio = ?,
+           efectivo_recibido = ?, devuelta = ?
        WHERE id_domicilio = ?`,
       [
         metodo_pago,
@@ -830,6 +845,8 @@ async function marcarEntregado(id, telefonoDomiciliario, data) {
         idUbicacionEntrega,
         precioNuevo,
         recargoNuevo,
+        efectivoRecibido,
+        devuelta,
         id,
       ]
     );

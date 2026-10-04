@@ -147,6 +147,9 @@ CREATE TABLE domicilio (
   -- estas dos columnas no tenga que hacer casos especiales por método.
   valor_efectivo         DECIMAL(10,2)  NULL,
   valor_transferencia    DECIMAL(10,2)  NULL,
+  -- Cobro en efectivo: lo que recibió el domiciliario y la devuelta que dio al cliente.
+  efectivo_recibido      DECIMAL(10,2)  NULL,
+  devuelta               DECIMAL(10,2)  NULL,
   metodo_pago            ENUM('Efectivo', 'Transferencia', 'Ambos') NULL,
   estado                 ENUM('Asignado', 'En_curso', 'Entregado', 'Cancelado') NOT NULL DEFAULT 'En_curso',
   distancia_km           DOUBLE         NULL,

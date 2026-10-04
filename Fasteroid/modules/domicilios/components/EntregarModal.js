@@ -26,6 +26,7 @@ function EntregarFormContent({ precioBase, recargoInicial, onSaved }) {
       valor_recaudado: precioBase ?? "",
       valor_efectivo: "",
       valor_transferencia: "",
+      efectivo_recibido: "",
     },
   });
   // La adición de domicilio forma parte del precio. Confirmarla o cambiarla aquí ajusta
@@ -45,6 +46,17 @@ function EntregarFormContent({ precioBase, recargoInicial, onSaved }) {
   // cada método — en vez de mandar un valor_recaudado aparte que podría no
   // cuadrar con la suma (el backend arma el total sumando los dos).
   const esAmbos = watch("metodo_pago") === "Ambos";
+  // Cobro en efectivo: lo que se cobra en efectivo y, si se indica lo recibido, la devuelta.
+  const metodoObservado = watch("metodo_pago");
+  const cobroEfectivo = esAmbos
+    ? Number(watch("valor_efectivo")) || 0
+    : metodoObservado === "Efectivo"
+      ? Number(watch("valor_recaudado")) || 0
+      : 0;
+  const recibidoObservado = watch("efectivo_recibido");
+  const recibidoIndicado = recibidoObservado !== "" && recibidoObservado != null;
+  const recibidoInsuficiente = cobroEfectivo > 0 && recibidoIndicado && Number(recibidoObservado) < cobroEfectivo;
+  const devuelta = cobroEfectivo > 0 && recibidoIndicado && !recibidoInsuficiente ? Number(recibidoObservado) - cobroEfectivo : null;
   const valorEfectivo = watch("valor_efectivo");
   const valorTransferencia = watch("valor_transferencia");
 
@@ -83,13 +95,16 @@ function EntregarFormContent({ precioBase, recargoInicial, onSaved }) {
   const sumaCuadra = precioSugerido == null || sumaAmbos === precioSugerido;
 
   function onSubmit(values) {
+    if (recibidoInsuficiente) return;
     const recargoDomicilio = Number(recargo) || 0;
+    const efectivoRecibido = recibidoIndicado ? Number(values.efectivo_recibido) : null;
     if (esAmbos) {
       onSaved({
         metodo_pago: values.metodo_pago,
         valor_efectivo: Number(values.valor_efectivo),
         valor_transferencia: Number(values.valor_transferencia),
         recargo_domicilio: recargoDomicilio,
+        efectivo_recibido: efectivoRecibido,
       });
       return;
     }
@@ -97,6 +112,7 @@ function EntregarFormContent({ precioBase, recargoInicial, onSaved }) {
       metodo_pago: values.metodo_pago,
       valor_recaudado: Number(values.valor_recaudado),
       recargo_domicilio: recargoDomicilio,
+      efectivo_recibido: efectivoRecibido,
     });
   }
 
@@ -214,6 +230,30 @@ function EntregarFormContent({ precioBase, recargoInicial, onSaved }) {
           />
           {errors.valor_recaudado && (
             <p className="mt-1 text-xs text-red-500">{errors.valor_recaudado.message}</p>
+          )}
+        </div>
+      )}
+
+      {cobroEfectivo > 0 && (
+        <div>
+          <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <Banknote size={14} />
+            Recibido en efectivo (opcional)
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="any"
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+            {...register("efectivo_recibido")}
+          />
+          {recibidoInsuficiente && (
+            <p className="mt-1 text-xs text-red-500">Lo recibido no alcanza para cubrir el cobro en efectivo.</p>
+          )}
+          {devuelta != null && (
+            <p className="mt-1 text-sm font-semibold text-green-600 dark:text-green-400">
+              Devuelta: {formatoCOP(devuelta)}
+            </p>
           )}
         </div>
       )}
