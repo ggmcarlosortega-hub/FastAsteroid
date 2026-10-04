@@ -18,15 +18,43 @@ function DomiciliarioFormContent({ onSaved }) {
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: { nombre: "", telefono: "", password: "" } });
 
+  // El backend gratuito se duerme cuando no hay tráfico (fly.toml: auto_stop_machines),
+  // y la primera petición puede llegar mientras despierta. Por eso un fallo de red o un
+  // 502/503/504 se reintenta. Si un intento anterior sí llegó, el reintento responde
+  // 409 y se trata como creado.
   async function onSubmit(values) {
     setServerError(null);
-    const res = await fetch("/api/domiciliarios", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
-    });
-    const data = await res.json();
+    const intentar = () =>
+      fetch("/api/domiciliarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      });
 
+    let res = null;
+    let reintentado = false;
+    for (let intento = 0; intento < 3; intento++) {
+      try {
+        res = await intentar();
+        if (![502, 503, 504].includes(res.status)) break;
+      } catch {
+        res = null;
+      }
+      reintentado = true;
+      await new Promise((resolver) => setTimeout(resolver, 2500));
+    }
+
+    if (!res) {
+      setServerError("No se pudo conectar con el servidor. Intenta de nuevo en unos segundos.");
+      return;
+    }
+
+    if (res.status === 409 && reintentado) {
+      onSaved({ telefono: values.telefono, nombre: values.nombre, activo: true });
+      return;
+    }
+
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setServerError(data.error ?? "No se pudo crear el domiciliario");
       return;

@@ -442,6 +442,15 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
       }
     }
 
+    // La adición elegida queda registrada en la ubicación del cliente, para que los
+    // próximos pedidos a ese lugar la traigan sola (si la ubicación aún no tiene una).
+    if (id_ubicacion && id_municipio) {
+      await conn.execute(
+        "UPDATE ubicacion SET id_municipio = ? WHERE id_ubicacion = ? AND id_municipio IS NULL",
+        [id_municipio, id_ubicacion]
+      );
+    }
+
     const id_domicilio = crypto.randomUUID();
 
     if (creadoPorAdmin) {

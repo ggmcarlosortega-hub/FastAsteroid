@@ -58,9 +58,7 @@ async function leerComanda(dataUrl) {
         nombre: l.nombre,
         precio_venta: l.precio_venta,
       })),
-    lineasSinCoincidencia: analisis.lineas
-      .filter((l) => !l.id_producto)
-      .map((l) => ({ descripcion: l.descripcion, importe: l.importe })),
+    municipios,
   };
 }
 
@@ -93,7 +91,7 @@ function CapturaStepContent({ onListo }) {
         precio: "",
         totalCuadra: null,
         lineasSugeridas: [],
-        lineasSinCoincidencia: [],
+        municipios: [],
       }));
       onListo({ foto: dataUrl, ...parsed });
     };
@@ -211,17 +209,16 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
   } = useForm({
     defaultValues: {
       telefono: valoresIniciales.telefono ?? "",
+      telefono_alterno: valoresIniciales.telefono_alterno ?? "",
       nombre: valoresIniciales.nombre ?? "",
       referencia: valoresIniciales.referencia ?? "",
     },
   });
   const telefonoActual = watch("telefono");
 
-  // Autocompletar por teléfono: si el número (leído por OCR o corregido a mano)
-  // ya coincide con un cliente guardado, se rellenan nombre y referencia solos —
-  // también sirve de red de seguridad para errores de OCR en el teléfono, porque
-  // si al corregirlo aparece un cliente real se nota al toque. Mismo patrón de
-  // debounce que ClienteStepContent en NuevoDomicilioModal.js.
+  // Autocompletar por teléfono: si el número (leído por OCR o corregido a mano) ya es
+  // de un cliente guardado, principal o alterno, se rellenan nombre, referencia y
+  // teléfono alterno. Mismo patrón de debounce que ClienteStepContent.
   const [clienteEncontrado, setClienteEncontrado] = useState(false);
   useEffect(() => {
     setClienteEncontrado(false);
@@ -231,6 +228,7 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
       if (!res.ok) return;
       const cliente = await res.json();
       setValue("nombre", cliente.nombre);
+      setValue("telefono_alterno", cliente.telefono_alterno ?? "");
       if (cliente.ubicaciones?.[0]) {
         setValue("referencia", cliente.ubicaciones[0].alias_direccion);
       }
@@ -239,75 +237,44 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
     return () => clearTimeout(timeout);
   }, [telefonoActual, setValue]);
 
-  // El OCR solo lee texto de la foto — no es confiable mapear eso a un producto
-  // exacto del catálogo, así que acá siempre se elige a mano (igual que en "Nuevo
-  // domicilio"), aunque el resto de los campos sí vengan pre-llenados por el OCR.
+  // Solo se prellenan los productos que el OCR reconoce en el catálogo. Los demás no se
+  // muestran; el domiciliario elige a mano en el selector.
   const [lineas, setLineas] = useState(valoresIniciales.lineasSugeridas ?? []);
   const [lineasError, setLineasError] = useState(null);
-  // El precio que lee el OCR (de la línea TOTAL de la comanda) es solo un punto de
-  // partida ANTES de elegir productos — precioTocado arranca en false siempre
-  // (nunca en true por venir del OCR), porque si no, en cuanto el domiciliario
-  // elige productos del catálogo el precio se queda pegado al de la comanda y
-  // puede no coincidir con lo que realmente se está cobrando (bug real: el total
-  // leído por OCR y la suma de productos elegidos son cosas distintas).
+
+  // Adición de domicilio: se elige de los municipios guardados. Su precio es el recargo
+  // del municipio y se suma al precio del pedido.
+  const municipios = valoresIniciales.municipios ?? [];
+  const [idMunicipio, setIdMunicipio] = useState(valoresIniciales.adicion?.id_municipio ?? "");
+  const municipioSeleccionado = municipios.find((m) => m.id_municipio === idMunicipio) ?? null;
+  const recargo = municipioSeleccionado ? Number(municipioSeleccionado.recargo_domicilio) : 0;
+
+  // El precio que lee el OCR es solo un punto de partida: se recalcula con los productos
+  // y la adición, salvo que el domiciliario lo haya escrito a mano.
   const [precio, setPrecio] = useState(valoresIniciales.precio ? String(valoresIniciales.precio) : "");
   const [precioTocado, setPrecioTocado] = useState(false);
   const [precioError, setPrecioError] = useState(null);
 
-  // Adición de domicilio (recargo): el valor de la comanda si lo trae, o el recargo
-  // guardado del municipio. Forma parte del precio del pedido. Se puede cambiar aquí
-  // y al entregar; el cambio queda para este pedido y para los futuros del municipio.
-  const adicion = valoresIniciales.adicion ?? null;
-  const [recargo, setRecargo] = useState(
-    adicion ? Number(adicion.importe_comanda ?? adicion.recargo_municipio) : 0
-  );
-
-  // Productos de la comanda que no están en el catálogo: se les pone su costo (el
-  // valor que leyó el OCR de arranque) para que el total del pedido sea real.
-  const [sinCatalogo, setSinCatalogo] = useState(() =>
-    (valoresIniciales.lineasSinCoincidencia ?? []).map((l) => ({
-      descripcion: l.descripcion,
-      precio: l.importe ?? "",
-    }))
-  );
-
-  function sumaSinCatalogo(items) {
-    return items.reduce((suma, item) => suma + (Number(item.precio) || 0), 0);
-  }
-
-  function precioSugerido(nuevasLineas, nuevoRecargo, nuevoSinCatalogo = sinCatalogo) {
-    return sumaLineas(nuevasLineas) + (Number(nuevoRecargo) || 0) + sumaSinCatalogo(nuevoSinCatalogo);
+  function recalcularPrecio(nuevasLineas, nuevoRecargo) {
+    const sugerido = sumaLineas(nuevasLineas) + (Number(nuevoRecargo) || 0);
+    setPrecio(sugerido > 0 ? String(sugerido) : "");
   }
 
   function handleLineasChange(nuevasLineas) {
     setLineas(nuevasLineas);
     setLineasError(null);
-    if (!precioTocado) {
-      const sugerido = precioSugerido(nuevasLineas, recargo);
-      setPrecio(sugerido > 0 ? String(sugerido) : "");
-    }
+    if (!precioTocado) recalcularPrecio(nuevasLineas, recargo);
   }
 
-  function handleRecargoChange(valor) {
-    setRecargo(valor);
-    if (!precioTocado) {
-      const sugerido = precioSugerido(lineas, valor);
-      setPrecio(sugerido > 0 ? String(sugerido) : "");
-    }
-  }
-
-  function handleSinCatalogoChange(indice, valor) {
-    const nuevo = sinCatalogo.map((item, i) => (i === indice ? { ...item, precio: valor } : item));
-    setSinCatalogo(nuevo);
-    if (!precioTocado) {
-      const sugerido = precioSugerido(lineas, recargo, nuevo);
-      setPrecio(sugerido > 0 ? String(sugerido) : "");
-    }
+  function handleMunicipioChange(nuevoId) {
+    setIdMunicipio(nuevoId);
+    const nuevo = municipios.find((m) => m.id_municipio === nuevoId);
+    if (!precioTocado) recalcularPrecio(lineas, nuevo ? Number(nuevo.recargo_domicilio) : 0);
   }
 
   function onSubmit(values) {
     let valido = true;
-    if (lineas.length === 0 && sinCatalogo.length === 0) {
+    if (lineas.length === 0) {
       setLineasError("Elige al menos un producto");
       valido = false;
     }
@@ -318,34 +285,22 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
     }
     if (!valido) return;
 
-    const sinCatalogoValido = sinCatalogo.every((item) => Number(item.precio) > 0);
-    if (!sinCatalogoValido) {
-      setPrecioError("Pon el costo de cada producto que no está en el catálogo");
-      return;
-    }
-
     onConfirmar({
       ...values,
       productos_lineas: lineas.map((l) => ({ id_producto: l.id_producto, cantidad: l.cantidad })),
-      productos_sin_catalogo: sinCatalogo.map((item) => ({
-        descripcion: item.descripcion,
-        precio: Number(item.precio),
-      })),
       precio: precioNum,
-      id_municipio: adicion?.id_municipio ?? null,
-      recargo_domicilio: Number(recargo) || 0,
+      id_municipio: municipioSeleccionado?.id_municipio ?? null,
+      recargo_domicilio: recargo,
     });
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 text-left">
       <p className="text-xs text-amber-600 dark:text-amber-400">
-        La lectura automática puede fallar, sobre todo con el teléfono — revisa cada campo antes
+        La lectura automática puede fallar, sobre todo con el teléfono. Revisa cada campo antes
         de continuar.
       </p>
 
-      {/* Teléfono leído por el OCR — con botón de llamada directa (tel:) al lado,
-          para poder confirmar con el cliente si el número se ve dudoso. */}
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <Phone size={14} />
@@ -375,9 +330,23 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
         {clienteEncontrado && (
           <p className="mt-1 flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
             <User size={12} />
-            Cliente ya registrado — nombre y referencia autocompletados
+            Cliente ya registrado: nombre, referencia y teléfono alterno autocompletados
           </p>
         )}
+      </div>
+
+      <div>
+        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <Phone size={14} />
+          Segundo teléfono (opcional)
+        </label>
+        <input
+          type="tel"
+          placeholder="Quien recibe cuando el principal no está"
+          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+          {...register("telefono_alterno")}
+        />
+        <p className="mt-1 text-xs text-zinc-400">Comparte las mismas ubicaciones que el principal.</p>
       </div>
 
       <div>
@@ -401,34 +370,9 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
           className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
           {...register("referencia", { required: "Obligatorio" })}
         />
-        {errors.referencia && (
-          <p className="mt-1 text-xs text-red-500">{errors.referencia.message}</p>
-        )}
+        {errors.referencia && <p className="mt-1 text-xs text-red-500">{errors.referencia.message}</p>}
       </div>
 
-      {/* El OCR no elige productos del catálogo por sí solo — se escogen a mano
-          acá, igual que en "Nuevo domicilio" (ver comentario más arriba). */}
-      {sinCatalogo.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Productos de la comanda que no están en el catálogo. Ponles su costo para que el total sea real.
-          </p>
-          {sinCatalogo.map((item, indice) => (
-            <div key={`${item.descripcion}-${indice}`} className="flex items-center gap-2">
-              <span className="flex-1 truncate text-sm text-zinc-700 dark:text-zinc-300">{item.descripcion}</span>
-              <input
-                type="number"
-                min="1"
-                step="any"
-                value={item.precio}
-                onChange={(e) => handleSinCatalogoChange(indice, e.target.value)}
-                aria-label={`Costo de ${item.descripcion}`}
-                className="w-32 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-              />
-            </div>
-          ))}
-        </div>
-      )}
       {valoresIniciales.totalCuadra === false && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           El total de la comanda no coincide con la suma de los productos leídos. Revisa la lista de productos.
@@ -440,25 +384,22 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <MapPin size={14} />
-          Adición de domicilio{adicion ? ` (${adicion.nombre})` : ""}
+          Adición de domicilio
         </label>
-        <input
-          type="number"
-          min="0"
-          step="any"
-          value={recargo}
-          onChange={(e) => handleRecargoChange(e.target.value)}
+        <select
+          value={idMunicipio}
+          onChange={(e) => handleMunicipioChange(e.target.value)}
           className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-        />
-        {adicion?.importe_comanda != null && adicion.importe_comanda !== adicion.recargo_municipio && (
-          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-            La comanda marca ${adicion.importe_comanda.toLocaleString("es-CO")}; el municipio guarda $
-            {adicion.recargo_municipio.toLocaleString("es-CO")}.
-          </p>
-        )}
+        >
+          <option value="">Sin adición</option>
+          {municipios.map((m) => (
+            <option key={m.id_municipio} value={m.id_municipio}>
+              {m.nombre} (+${Number(m.recargo_domicilio).toLocaleString("es-CO")})
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* Precio autocalculado al elegir productos, editable si se negoció otro. */}
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <Banknote size={14} />
@@ -483,16 +424,15 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           <ArrowLeft size={14} />
-          Repetir foto
+          Atrás
         </button>
         <button
           type="submit"
           className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
-          <Save size={15} />
           Continuar
         </button>
       </div>
@@ -622,15 +562,26 @@ function mostrarCargando(titulo) {
 async function resolverClienteYUbicacion(datos) {
   mostrarCargando("Buscando cliente...");
 
+  const telefonoAlterno = datos.telefono_alterno?.trim() || null;
   let cliente;
   const resCliente = await fetch(`/api/clientes/${datos.telefono}`);
   if (resCliente.ok) {
     cliente = await resCliente.json();
+    if ((cliente.telefono_alterno ?? null) !== telefonoAlterno) {
+      const resActualizar = await fetch(`/api/clientes/${cliente.telefono}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: cliente.nombre, telefono_alterno: telefonoAlterno }),
+      });
+      const dataActualizar = await resActualizar.json();
+      if (!resActualizar.ok) throw new Error(dataActualizar.error ?? "No se pudo guardar el teléfono alterno");
+      cliente = { ...cliente, ...dataActualizar };
+    }
   } else {
     const resCrear = await fetch("/api/clientes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ telefono: datos.telefono, nombre: datos.nombre }),
+      body: JSON.stringify({ telefono: datos.telefono, nombre: datos.nombre, telefono_alterno: telefonoAlterno }),
     });
     const dataCrear = await resCrear.json();
     if (!resCrear.ok) throw new Error(dataCrear.error ?? "No se pudo registrar el cliente");
@@ -810,7 +761,6 @@ export async function openEscanearComandaModal(espaciosOcupados, ubicacionRecogi
         id_ubicacion: clienteUbicacion.ubicacion?.id_ubicacion ?? null,
         ubicacion_recogida: ubicacionRecogida,
         productos_lineas: datosOCR.productos_lineas,
-        productos_sin_catalogo: datosOCR.productos_sin_catalogo,
         precio: Number(datosOCR.precio),
         id_municipio: datosOCR.id_municipio,
         recargo_domicilio: datosOCR.recargo_domicilio,

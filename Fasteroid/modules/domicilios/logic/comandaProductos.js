@@ -69,7 +69,7 @@ function similitudPalabra(a, b) {
 // o dejar el "$" pegado; por eso la cantidad es opcional (default 1, que es lo
 // normal en estas comandas) y el importe es lo único obligatorio al final.
 const REGEX_LINEA =
-  /^[^\dA-Za-zÁÉÍÓÚÑáéíóúñ]*(?:(\d{1,2})\s+)?([A-Za-zÁÉÍÓÚÑáéíóúñ][^$]*?)\s*\$?\s*([\d][\d.,]{2,})\s*$/;
+  /^[^\dA-Za-zÁÉÍÓÚÑáéíóúñ]*(?:(\d{1,2})\s+)?([A-Za-zÁÉÍÓÚÑáéíóúñ][^$]*?)\s+\$?\s*([\d][\d.,]{2,})\s*$/;
 const REGEX_PIE =
   /\b(TOTA\w*|SUBTOT\w*|SON|CAMBIO\w*|IMPOC\w*|ESTABLECI\w*|REPARTIDOR|CLIENTE|REF|TEL\w*|FACTURA|ORDEN|DOMICILIO|NIT|CP|DIRECCI\w*|PIZZERIA|RESTAURANT\w*|MUCHAS|GRACIAS|CANT|DESCRIPCI\w*|IMPORTE)\b/i;
 function importeNumerico(crudo) {
@@ -86,6 +86,7 @@ export function leerLineasComanda(textoOCR) {
     const descripcion = m[2].replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9 .']/g, " ").replace(/\s+/g, " ").trim();
     const importe = importeNumerico(m[3]);
     if (!descripcion || importe < 1000) continue;
+    if (!/[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}/.test(descripcion)) continue;
     lineas.push({ cantidad: m[1] ? Number(m[1]) : 1, descripcion, importe });
   }
   return { lineas };
