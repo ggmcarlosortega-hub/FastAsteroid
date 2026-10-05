@@ -244,6 +244,14 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
   // muestran; el domiciliario elige a mano en el selector.
   const [lineas, setLineas] = useState(valoresIniciales.lineasSugeridas ?? []);
   const [lineasError, setLineasError] = useState(null);
+  // Productos de la comanda que no están en el catálogo: se muestran con su costo
+  // (arranca con el importe del ticket) para que el total del pedido sea el real.
+  const [sinCatalogo, setSinCatalogo] = useState(() =>
+    (valoresIniciales.lineasSinCoincidencia ?? []).map((l) => ({
+      descripcion: l.descripcion,
+      precio: l.importe ?? "",
+    }))
+  );
 
   // Adición de domicilio: se elige de los municipios guardados. Su precio es el recargo
   // del municipio y se suma al precio del pedido.
@@ -254,12 +262,14 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
 
   // El precio que lee el OCR es solo un punto de partida: se recalcula con los productos
   // y la adición, salvo que el domiciliario lo haya escrito a mano.
-  const [precio, setPrecio] = useState(valoresIniciales.precio ? String(valoresIniciales.precio) : "");
+  const precioInicial = valoresIniciales.precio ? Number(valoresIniciales.precio) - recargo : null;
+  const [precio, setPrecio] = useState(precioInicial != null && precioInicial > 0 ? String(precioInicial) : "");
   const [precioTocado, setPrecioTocado] = useState(false);
   const [precioError, setPrecioError] = useState(null);
 
-  function recalcularPrecio(nuevasLineas, nuevoRecargo) {
-    const sugerido = sumaLineas(nuevasLineas) + (Number(nuevoRecargo) || 0);
+  function recalcularPrecio(nuevasLineas, nuevoRecargo, nuevoSinCatalogo = sinCatalogo) {
+    const sumaSinCatalogo = nuevoSinCatalogo.reduce((suma, item) => suma + (Number(item.precio) || 0), 0);
+    const sugerido = sumaLineas(nuevasLineas) + sumaSinCatalogo;
     setPrecio(sugerido > 0 ? String(sugerido) : "");
   }
 
@@ -275,9 +285,15 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
     if (!precioTocado) recalcularPrecio(lineas, nuevo ? Number(nuevo.recargo_domicilio) : 0);
   }
 
+  function handleSinCatalogoChange(indice, valor) {
+    const nuevo = sinCatalogo.map((item, i) => (i === indice ? { ...item, precio: valor } : item));
+    setSinCatalogo(nuevo);
+    if (!precioTocado) recalcularPrecio(lineas, recargo, nuevo);
+  }
+
   function onSubmit(values) {
     let valido = true;
-    if (lineas.length === 0) {
+    if (lineas.length === 0 && sinCatalogo.length === 0) {
       setLineasError("Elige al menos un producto");
       valido = false;
     }
@@ -286,12 +302,17 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
       setPrecioError("Debe ser mayor a 0");
       valido = false;
     }
+    if (sinCatalogo.some((item) => !(Number(item.precio) > 0))) {
+      setPrecioError("Pon el costo de cada producto que no está en el catálogo");
+      valido = false;
+    }
     if (!valido) return;
 
     onConfirmar({
       ...values,
       productos_lineas: lineas.map((l) => ({ id_producto: l.id_producto, cantidad: l.cantidad })),
-      precio: precioNum,
+      productos_sin_catalogo: sinCatalogo.map((item) => ({ descripcion: item.descripcion, precio: Number(item.precio) })),
+      precio: precioNum + recargo,
       id_municipio: municipioSeleccionado?.id_municipio ?? null,
       recargo_domicilio: recargo,
       aprendizaje: {
@@ -381,6 +402,27 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
         {errors.referencia && <p className="mt-1 text-xs text-red-500">{errors.referencia.message}</p>}
       </div>
 
+      {sinCatalogo.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            Productos de la comanda que no están en el catálogo. Ponles su costo para que el total sea real.
+          </p>
+          {sinCatalogo.map((item, indice) => (
+            <div key={`${item.descripcion}-${indice}`} className="flex items-center gap-2">
+              <span className="flex-1 truncate text-sm text-zinc-700 dark:text-zinc-300">{item.descripcion}</span>
+              <input
+                type="number"
+                min="1"
+                step="any"
+                value={item.precio}
+                onChange={(e) => handleSinCatalogoChange(indice, e.target.value)}
+                aria-label={`Costo de ${item.descripcion}`}
+                className="w-32 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
+              />
+            </div>
+          ))}
+        </div>
+      )}
       {valoresIniciales.totalCuadra === false && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           El total de la comanda no coincide con la suma de los productos leídos. Revisa la lista de productos.
@@ -411,7 +453,7 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <Banknote size={14} />
-          Precio (valor del pedido)
+          Precio sin adición
         </label>
         <input
           type="number"
@@ -426,6 +468,11 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
           className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
         />
         {precioError && <p className="mt-1 text-xs text-red-500">{precioError}</p>}
+        {Number(precio) > 0 && recargo > 0 && (
+          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Total con adición de domicilio: ${(Number(precio) + recargo).toLocaleString("es-CO")}
+          </p>
+        )}
       </div>
 
       <div className="mt-2 flex justify-between gap-2">
@@ -806,6 +853,7 @@ export async function openEscanearComandaModal(espaciosOcupados, ubicacionRecogi
         id_ubicacion: clienteUbicacion.ubicacion?.id_ubicacion ?? null,
         ubicacion_recogida: ubicacionRecogida,
         productos_lineas: datosOCR.productos_lineas,
+        productos_sin_catalogo: datosOCR.productos_sin_catalogo,
         precio: Number(datosOCR.precio),
         id_municipio: datosOCR.id_municipio,
         recargo_domicilio: datosOCR.recargo_domicilio,
