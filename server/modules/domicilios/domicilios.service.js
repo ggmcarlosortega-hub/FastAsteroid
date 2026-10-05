@@ -350,7 +350,6 @@ function validarProductosSinCatalogo(items) {
 
 async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = false } = {}) {
   const telefonoRecibido = data.telefono_cliente?.trim();
-  const precio = Number(data.precio);
   const foto_productos_url = data.foto_productos_url ?? null;
 
   // El domiciliario (propio) siempre viene de su sesión y sigue siendo obligatorio acá.
@@ -369,8 +368,8 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
   // Sin ubicación guardada (cliente nuevo): el trayecto empieza sin un punto fijo y la
   // ubicación se define al entregar.
   const id_ubicacion = data.id_ubicacion?.trim() || null;
-  // Adición de domicilio (recargo del municipio): el precio que llega ya incluye este
-  // valor; se guarda aparte para poder ajustarlo al entregar.
+  // Adición de domicilio (recargo del municipio): se suma al precio y se guarda aparte
+  // para poder ajustarlo al entregar.
   let id_municipio = data.id_municipio?.trim() || null;
   let recargo_domicilio = data.recargo_domicilio == null ? null : Number(data.recargo_domicilio);
   if (recargo_domicilio != null && (!Number.isFinite(recargo_domicilio) || recargo_domicilio < 0)) {
@@ -387,9 +386,6 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
       const [recargoRows] = await pool.execute("SELECT recargo_domicilio FROM municipio WHERE id_municipio = ?", [id_municipio]);
       recargo_domicilio = Number(recargoRows[0].recargo_domicilio);
     }
-  }
-  if (!Number.isFinite(precio) || precio <= 0) {
-    throw new ServiceError("precio debe ser mayor a 0", 400);
   }
   if (!foto_productos_url) {
     throw new ServiceError("La foto del pedido es obligatoria", 400);
@@ -408,7 +404,7 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
 
     // Productos leídos de la comanda que no están en el catálogo: no tienen fila en
     // domicilio_producto, pero sí van en la descripción del pedido. Su valor ya viene
-    // sumado en `precio` (lo confirma quien registra el pedido).
+    // sumado al precio calculado abajo.
     const productosSinCatalogo = validarProductosSinCatalogo(data.productos_sin_catalogo);
     const tieneCatalogo = Array.isArray(data.productos_lineas) && data.productos_lineas.length > 0;
     if (!tieneCatalogo && productosSinCatalogo.length === 0) {
@@ -423,6 +419,13 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
     ]
       .filter(Boolean)
       .join(", ");
+
+    // El precio lo calcula el servidor desde los productos y el recargo; el que llega
+    // del cliente no se usa para no aceptar un total distinto al del catálogo.
+    const precio =
+      lineas.reduce((suma, l) => suma + l.precio_unitario * l.cantidad, 0) +
+      productosSinCatalogo.reduce((suma, p) => suma + p.precio, 0) +
+      (recargo_domicilio ?? 0);
 
     if (!creadoPorAdmin) {
       const [domiciliarioRows] = await conn.execute("SELECT rol FROM usuario WHERE telefono = ?", [
