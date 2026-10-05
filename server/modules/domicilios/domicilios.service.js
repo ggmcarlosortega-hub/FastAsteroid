@@ -325,6 +325,8 @@ async function insertarLineasProducto(id_domicilio, lineas, conn = pool) {
 // disponible lo toma después con recogerDomicilio(). Cuando lo crea el propio
 // domiciliario, lo tiene en mano de una vez y elige el espacio ahí mismo, arrancando
 // directo en "En_curso" como antes.
+const PRECIO_MINIMO_SIN_CATALOGO = 1000;
+
 function validarProductosSinCatalogo(items) {
   if (items == null) return [];
   if (!Array.isArray(items)) {
@@ -336,8 +338,11 @@ function validarProductosSinCatalogo(items) {
     if (!descripcion) {
       throw new ServiceError(`Producto sin catálogo ${i + 1}: falta la descripción`, 400);
     }
-    if (!Number.isFinite(precio) || precio <= 0) {
-      throw new ServiceError(`Producto sin catálogo "${descripcion}": el precio debe ser mayor a 0`, 400);
+    if (!Number.isFinite(precio) || precio < PRECIO_MINIMO_SIN_CATALOGO) {
+      throw new ServiceError(
+        `Producto sin catálogo "${descripcion}": el costo debe ser de al menos $${PRECIO_MINIMO_SIN_CATALOGO}`,
+        400
+      );
     }
     return { descripcion, precio };
   });
@@ -377,6 +382,10 @@ async function crearDomicilio(telefonoDomiciliario, data, { creadoPorAdmin = fal
     ]);
     if (!municipioRows[0]) {
       throw new ServiceError("El municipio indicado no existe", 400);
+    }
+    if (recargo_domicilio == null) {
+      const [recargoRows] = await pool.execute("SELECT recargo_domicilio FROM municipio WHERE id_municipio = ?", [id_municipio]);
+      recargo_domicilio = Number(recargoRows[0].recargo_domicilio);
     }
   }
   if (!Number.isFinite(precio) || precio <= 0) {

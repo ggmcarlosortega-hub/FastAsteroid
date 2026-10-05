@@ -81,20 +81,33 @@ function importeNumerico(crudo) {
   return Number(crudo.replace(/[^\d]/g, ""));
 }
 
+// Línea con nombre y sin importe legible (el OCR perdió el precio de la línea).
+const REGEX_SIN_PRECIO = /^[^\dA-Za-zÁÉÍÓÚÑáéíóúñ]*(?:(\d{1,2})\s+)?([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ .'-]{4,})\s*$/;
+
 export function leerLineasComanda(textoOCR) {
   const lineas = [];
+  const sinPrecio = [];
   for (const crudo of (textoOCR ?? "").split("\n")) {
     const linea = crudo.trim();
     if (!linea || REGEX_PIE.test(linea)) continue;
     const m = linea.match(REGEX_LINEA);
-    if (!m) continue;
+    if (!m) {
+      const sp = linea.match(REGEX_SIN_PRECIO);
+      if (sp) {
+        const descripcion = sp[2].replace(/\s+/g, " ").trim();
+        if (/[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}/.test(descripcion)) {
+          sinPrecio.push({ cantidad: sp[1] ? Number(sp[1]) : 1, descripcion, importe: null });
+        }
+      }
+      continue;
+    }
     const descripcion = m[2].replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9 .']/g, " ").replace(/\s+/g, " ").trim();
     const importe = importeNumerico(m[3]);
     if (!descripcion || importe < 1000) continue;
     if (!/[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}/.test(descripcion)) continue;
     lineas.push({ cantidad: m[1] ? Number(m[1]) : 1, descripcion, importe });
   }
-  return { lineas };
+  return { lineas, sinPrecio };
 }
 
 // Qué fracción del nombre del municipio aparece (con tolerancia al OCR) en la
@@ -218,7 +231,7 @@ export function analizarComanda(textoOCR, productos, municipios = [], aprendizaj
   if (TELEFONOS_NEGOCIO.includes(cabecera.telefono)) cabecera.telefono = "";
   const aprendidosProducto = new Map(aprendizaje.filter((a) => a.tipo === "producto").map((a) => [a.texto_clave, a.id_referencia]));
   const aprendidosMunicipio = new Map(aprendizaje.filter((a) => a.tipo === "municipio").map((a) => [a.texto_clave, a.id_referencia]));
-  const { lineas: todasLasLineas } = leerLineasComanda(textoOCR);
+  const { lineas: todasLasLineas, sinPrecio: sinPrecioCrudo } = leerLineasComanda(textoOCR);
   const conImporte = detectarAdicion(todasLasLineas, municipios, aprendidosMunicipio);
   const adicion = conImporte ?? detectarAdicionPorNombre(textoOCR, municipios);
   const lineas = conImporte ? todasLasLineas.filter((l) => l !== conImporte.linea) : todasLasLineas;
@@ -226,6 +239,33 @@ export function analizarComanda(textoOCR, productos, municipios = [], aprendizaj
   const importeAdicion = conImporte ? conImporte.linea.importe : null;
   const sumaLineas = lineas.reduce((suma, l) => suma + l.importe, 0) + (importeAdicion ?? 0);
   const precio = cabecera.precio === "" ? null : cabecera.precio;
+  const sinPrecio = sinPrecioCrudo.filter((l) => !detectarAdicion([l], municipios));
+  const emparejadasSinPrecio = emparejarConCatalogo(sinPrecio, productos, 0.8, aprendidosProducto);
+  const recargoConocido = importeAdicion ?? adicion?.municipio?.recargo_domicilio ?? 0;
+  const conocidas =
+    lineas.reduce((suma, l) => suma + l.importe, 0) +
+    Number(recargoConocido) +
+    emparejadasSinPrecio.filter((l) => l.id_producto).reduce((suma, l) => suma + Number(l.precio_venta), 0);
+  const pendientes = emparejadasSinPrecio.filter((l) => !l.id_producto);
+  let inferida = null;
+  if (precio != null && pendientes.length === 1) {
+    const residual = Number(precio) - conocidas;
+    const candidatos = productos.filter((p) => Number(p.precio_venta) === residual);
+    if (residual > 0 && candidatos.length === 1) {
+      inferida = {
+        ...pendientes[0],
+        id_producto: candidatos[0].id_producto,
+        nombre: candidatos[0].nombre,
+        precio_venta: candidatos[0].precio_venta,
+        puntaje: 0.7,
+        origen: "total",
+      };
+    }
+  }
+  const todasLasEmparejadas = [
+    ...emparejadas,
+    ...emparejadasSinPrecio.map((l) => (l === pendientes[0] && inferida ? inferida : l)),
+  ];
   const totalCuadra =
     precio != null && todasLasLineas.length > 0 && (importeAdicion != null || !adicion)
       ? Math.abs(precio - sumaLineas) < 1
@@ -244,7 +284,7 @@ export function analizarComanda(textoOCR, productos, municipios = [], aprendizaj
           importe_comanda: importeAdicion,
         }
       : null,
-    lineas: emparejadas,
+    lineas: todasLasEmparejadas,
     lineasSinCoincidencia: emparejadas
       .filter((l) => !l.id_producto)
       .map((l) => ({ descripcion: l.descripcion, importe: l.importe })),

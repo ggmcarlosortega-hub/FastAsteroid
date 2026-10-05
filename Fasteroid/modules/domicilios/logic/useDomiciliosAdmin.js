@@ -20,7 +20,7 @@ function inicioDe(periodo) {
 export function useDomiciliosAdmin() {
   const [activos, setActivos] = useState([]);
   const [asignados, setAsignados] = useState([]);
-  const [periodo, setPeriodo] = useState("mes");
+  const [periodo, setPeriodo] = useState("dia");
   const [historial, setHistorial] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

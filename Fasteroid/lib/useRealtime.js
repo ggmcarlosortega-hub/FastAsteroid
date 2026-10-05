@@ -18,6 +18,16 @@ export function useRealtime(eventos, onEvento) {
   const lista = Array.isArray(eventos) ? eventos : [eventos];
   const key = lista.join(",");
 
+  // Si el socket nunca llega a conectarse (el navegador no alcanza el WebSocket),
+  // ningún aviso llega: al volver a la pestaña se vuelve a pedir todo.
+  useEffect(() => {
+    function alVolver() {
+      if (document.visibilityState === "visible") callbackRef.current();
+    }
+    document.addEventListener("visibilitychange", alVolver);
+    return () => document.removeEventListener("visibilitychange", alVolver);
+  }, []);
+
   useEffect(() => {
     if (!socket) return;
     const handler = () => callbackRef.current();

@@ -199,6 +199,7 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
   const [punto, setPunto] = useState(null);
   const [puntoError, setPuntoError] = useState(null);
   const [municipios, setMunicipios] = useState([]);
+  const [idMunicipioSinUbicacion, setIdMunicipioSinUbicacion] = useState("");
   const {
     register,
     handleSubmit,
@@ -367,8 +368,23 @@ function UbicacionStepContent({ cliente, onBack, onSelect }) {
         {ubicaciones?.length === 0 && (
           <div className="flex flex-col items-center gap-2 p-4 text-center">
             <p className="text-sm text-zinc-400">Sin ubicaciones guardadas.</p>
+            <select
+              value={idMunicipioSinUbicacion}
+              onChange={(e) => setIdMunicipioSinUbicacion(e.target.value)}
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            >
+              <option value="">Sin municipio (sin adición)</option>
+              {municipios.map((m) => (
+                <option key={m.id_municipio} value={m.id_municipio}>
+                  {m.nombre} (+${m.recargo_domicilio.toLocaleString("es-CO")})
+                </option>
+              ))}
+            </select>
             <button
-              onClick={() => onSelect(SIN_UBICACION)}
+              onClick={() => {
+                const municipio = municipios.find((m) => m.id_municipio === idMunicipioSinUbicacion) ?? null;
+                onSelect({ sinUbicacion: true, municipio });
+              }}
               className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
               Continuar sin ubicación (se define al entregar)
@@ -508,9 +524,6 @@ function openUbicacionStep(cliente) {
 function DetalleStepContent({ espaciosOcupados, pedirEspacio, municipio, onBack, onSubmit, serverError }) {
   const [lineas, setLineas] = useState([]);
   const [lineasError, setLineasError] = useState(null);
-  const [precio, setPrecio] = useState("");
-  const [precioTocado, setPrecioTocado] = useState(false);
-  const [precioError, setPrecioError] = useState(null);
   const [foto, setFoto] = useState(null);
   const [fotoError, setFotoError] = useState(null);
   const [espacio, setEspacio] = useState(null);
@@ -518,17 +531,12 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, municipio, onBack,
 
   const recargo = municipio?.recargo_domicilio ?? 0;
 
-  // El precio se sugiere solo (suma cantidad × precio de cada producto elegido,
-  // más el recargo del municipio de la ubicación si tiene uno) mientras no se
-  // haya tocado a mano — en cuanto se edita, deja de recalcularse para no
-  // pisarle un precio negociado con el cliente.
+  // El precio lo suma el sistema desde los productos y el recargo del municipio; no se edita a mano.
+  const precio = sumaLineas(lineas) + recargo;
+
   function handleLineasChange(nuevasLineas) {
     setLineas(nuevasLineas);
     setLineasError(null);
-    if (!precioTocado) {
-      const sugerido = sumaLineas(nuevasLineas) + recargo;
-      setPrecio(sugerido > 0 ? String(sugerido) : "");
-    }
   }
 
   function handleFoto(e) {
@@ -552,11 +560,6 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, municipio, onBack,
       setLineasError("Elige al menos un producto");
       valido = false;
     }
-    const precioNum = Number(precio);
-    if (!Number.isFinite(precioNum) || precioNum <= 0) {
-      setPrecioError("Debe ser mayor a 0");
-      valido = false;
-    }
     if (!foto) {
       setFotoError("La foto del pedido es obligatoria");
       valido = false;
@@ -569,7 +572,7 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, municipio, onBack,
 
     onSubmit({
       productos_lineas: lineas.map((l) => ({ id_producto: l.id_producto, cantidad: l.cantidad })),
-      precio: precioNum,
+      precio,
       ...(pedirEspacio ? { espacio_baul: espacio } : {}),
       foto_productos_url: foto,
     });
@@ -580,10 +583,8 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, municipio, onBack,
       {/* Catálogo de productos con cantidad (+/-) — ver SeleccionProductosPicker.js */}
       <SeleccionProductosPicker value={lineas} onChange={handleLineasChange} error={lineasError} />
 
-      {/* Precio total del pedido — se autocompleta al elegir productos, más el
-          recargo del municipio si la ubicación elegida tiene uno (ver
-          handleLineasChange más arriba), pero se puede sobreescribir a mano si
-          se negoció un precio distinto con el cliente. */}
+      {/* Precio total del pedido: lo suma el sistema desde los productos y el recargo
+          del municipio de la ubicación; no se edita a mano. */}
       <div>
         <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           <Banknote size={14} />
@@ -594,19 +595,9 @@ function DetalleStepContent({ espaciosOcupados, pedirEspacio, municipio, onBack,
             Incluye +${recargo.toLocaleString("es-CO")} de recargo por entrega a {municipio.nombre}
           </p>
         )}
-        <input
-          type="number"
-          min="1"
-          step="any"
-          value={precio}
-          onChange={(e) => {
-            setPrecio(e.target.value);
-            setPrecioTocado(true);
-            setPrecioError(null);
-          }}
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-        />
-        {precioError && <p className="mt-1 text-xs text-red-500">{precioError}</p>}
+        <p className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300">
+          ${precio.toLocaleString("es-CO")}
+        </p>
       </div>
 
       {/* Grilla del espacio del baúl (ver EspacioBaulSelector.js) — solo aparece
@@ -743,6 +734,7 @@ export async function openNuevoDomicilioModal(espaciosOcupados, ubicacionRecogid
       body: JSON.stringify({
         telefono_cliente: cliente.telefono,
         id_ubicacion: ubicacion.id_ubicacion,
+        id_municipio: ubicacion.municipio?.id_municipio ?? null,
         ubicacion_recogida: ubicacionRecogida,
         ...resultado,
       }),
@@ -806,6 +798,7 @@ export async function openNuevoDomicilioModalAdmin() {
       body: JSON.stringify({
         telefono_cliente: cliente.telefono,
         id_ubicacion: ubicacion.id_ubicacion,
+        id_municipio: ubicacion.municipio?.id_municipio ?? null,
         ...resultado,
       }),
     });

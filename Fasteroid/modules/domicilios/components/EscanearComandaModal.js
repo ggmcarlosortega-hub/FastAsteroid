@@ -48,7 +48,6 @@ async function leerComanda(dataUrl) {
     telefonoValido: analisis.telefonoValido,
     nombre: "",
     referencia: analisis.referencia,
-    precio: analisis.precio ?? "",
     totalCuadra: analisis.totalCuadra,
     adicion: analisis.adicion,
     lineasSugeridas: analisis.lineas
@@ -260,35 +259,24 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
   const municipioSeleccionado = municipios.find((m) => m.id_municipio === idMunicipio) ?? null;
   const recargo = municipioSeleccionado ? Number(municipioSeleccionado.recargo_domicilio) : 0;
 
-  // El precio que lee el OCR es solo un punto de partida: se recalcula con los productos
-  // y la adición, salvo que el domiciliario lo haya escrito a mano.
-  const precioInicial = valoresIniciales.precio ? Number(valoresIniciales.precio) - recargo : null;
-  const [precio, setPrecio] = useState(precioInicial != null && precioInicial > 0 ? String(precioInicial) : "");
-  const [precioTocado, setPrecioTocado] = useState(false);
-  const [precioError, setPrecioError] = useState(null);
-
-  function recalcularPrecio(nuevasLineas, nuevoRecargo, nuevoSinCatalogo = sinCatalogo) {
-    const sumaSinCatalogo = nuevoSinCatalogo.reduce((suma, item) => suma + (Number(item.precio) || 0), 0);
-    const sugerido = sumaLineas(nuevasLineas) + sumaSinCatalogo;
-    setPrecio(sugerido > 0 ? String(sugerido) : "");
-  }
+  const PRECIO_MINIMO_SIN_CATALOGO = 1000;
+  // El precio no se edita: lo suma el sistema desde los productos y sus costos.
+  const sumaSinCatalogo = sinCatalogo.reduce((suma, item) => suma + (Number(item.precio) || 0), 0);
+  const precioSinAdicion = sumaLineas(lineas) + sumaSinCatalogo;
+  const [sinCatalogoError, setSinCatalogoError] = useState(null);
 
   function handleLineasChange(nuevasLineas) {
     setLineas(nuevasLineas);
     setLineasError(null);
-    if (!precioTocado) recalcularPrecio(nuevasLineas, recargo);
   }
 
   function handleMunicipioChange(nuevoId) {
     setIdMunicipio(nuevoId);
-    const nuevo = municipios.find((m) => m.id_municipio === nuevoId);
-    if (!precioTocado) recalcularPrecio(lineas, nuevo ? Number(nuevo.recargo_domicilio) : 0);
   }
 
   function handleSinCatalogoChange(indice, valor) {
-    const nuevo = sinCatalogo.map((item, i) => (i === indice ? { ...item, precio: valor } : item));
-    setSinCatalogo(nuevo);
-    if (!precioTocado) recalcularPrecio(lineas, recargo, nuevo);
+    setSinCatalogo(sinCatalogo.map((item, i) => (i === indice ? { ...item, precio: valor } : item)));
+    setSinCatalogoError(null);
   }
 
   function onSubmit(values) {
@@ -297,13 +285,10 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
       setLineasError("Elige al menos un producto");
       valido = false;
     }
-    const precioNum = Number(precio);
-    if (!Number.isFinite(precioNum) || precioNum <= 0) {
-      setPrecioError("Debe ser mayor a 0");
-      valido = false;
-    }
-    if (sinCatalogo.some((item) => !(Number(item.precio) > 0))) {
-      setPrecioError("Pon el costo de cada producto que no está en el catálogo");
+    if (sinCatalogo.some((item) => !(Number(item.precio) >= PRECIO_MINIMO_SIN_CATALOGO))) {
+      setSinCatalogoError(
+        `El costo de cada producto sin catálogo debe ser de al menos $${PRECIO_MINIMO_SIN_CATALOGO.toLocaleString("es-CO")}`
+      );
       valido = false;
     }
     if (!valido) return;
@@ -312,7 +297,7 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
       ...values,
       productos_lineas: lineas.map((l) => ({ id_producto: l.id_producto, cantidad: l.cantidad })),
       productos_sin_catalogo: sinCatalogo.map((item) => ({ descripcion: item.descripcion, precio: Number(item.precio) })),
-      precio: precioNum + recargo,
+      precio: precioSinAdicion + recargo,
       id_municipio: municipioSeleccionado?.id_municipio ?? null,
       recargo_domicilio: recargo,
       aprendizaje: {
@@ -412,7 +397,7 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
               <span className="flex-1 truncate text-sm text-zinc-700 dark:text-zinc-300">{item.descripcion}</span>
               <input
                 type="number"
-                min="1"
+                min="1000"
                 step="any"
                 value={item.precio}
                 onChange={(e) => handleSinCatalogoChange(indice, e.target.value)}
@@ -421,6 +406,7 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
               />
             </div>
           ))}
+          {sinCatalogoError && <p className="text-xs text-red-500">{sinCatalogoError}</p>}
         </div>
       )}
       {valoresIniciales.totalCuadra === false && (
@@ -455,22 +441,12 @@ function RevisionStepContent({ valoresIniciales, onBack, onConfirmar }) {
           <Banknote size={14} />
           Precio sin adición
         </label>
-        <input
-          type="number"
-          min="1"
-          step="any"
-          value={precio}
-          onChange={(e) => {
-            setPrecio(e.target.value);
-            setPrecioTocado(true);
-            setPrecioError(null);
-          }}
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-800"
-        />
-        {precioError && <p className="mt-1 text-xs text-red-500">{precioError}</p>}
-        {Number(precio) > 0 && recargo > 0 && (
+        <p className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300">
+          ${precioSinAdicion.toLocaleString("es-CO")}
+        </p>
+        {recargo > 0 && (
           <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-            Total con adición de domicilio: ${(Number(precio) + recargo).toLocaleString("es-CO")}
+            Total con adición de domicilio: ${(precioSinAdicion + recargo).toLocaleString("es-CO")}
           </p>
         )}
       </div>
